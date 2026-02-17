@@ -1,0 +1,498 @@
+const config = require('./config');
+const { MSG } = require('../shared/constants');
+const Player = require('./Player');
+const Projectile = require('./Projectile');
+const Food = require('./Food');
+const Obstacle = require('./Obstacle');
+const Bot = require('./Bot');
+const SpatialHash = require('./SpatialHash');
+const { circleCircle, circleRect, resolveCircleCircle, resolveCircleRect } = require('./Collision');
+
+class Game {
+  constructor() {
+    this.players = new Map(); // id -> Player
+    this.projectiles = [];
+    this.food = [];
+    this.obstacles = [];
+    this.bots = [];
+    this.spatialHash = new SpatialHash(200);
+    this.tick = 0;
+    this.mapWidth = config.MAP_WIDTH;
+    this.mapHeight = config.MAP_HEIGHT;
+
+    // Create obstacles
+    for (const o of config.OBSTACLES) {
+      this.obstacles.push(new Obstacle(o.x, o.y, o.width, o.height));
+    }
+
+    // Spawn initial food
+    this.spawnFood();
+
+    // Spawn bots
+    this.spawnBots();
+  }
+
+  start() {
+    setInterval(() => this.update(), 1000 / config.TICK_RATE);
+    console.log(`Game loop started at ${config.TICK_RATE}Hz`);
+  }
+
+  addPlayer(ws, name, color) {
+    const player = new Player(name, color, ws);
+    this.spawnAtRandom(player);
+    this.players.set(player.id, player);
+
+    // Send welcome
+    this.sendTo(ws, {
+      t: MSG.WELCOME,
+      id: player.id,
+      mw: this.mapWidth,
+      mh: this.mapHeight,
+      obs: this.obstacles.map(o => o.serialize()),
+    });
+
+    return player;
+  }
+
+  removePlayer(playerId) {
+    this.players.delete(playerId);
+  }
+
+  handleInput(playerId, input) {
+    const player = this.players.get(playerId);
+    if (player && player.alive) {
+      player.applyInput(input);
+    }
+  }
+
+  handleRespawn(playerId) {
+    const player = this.players.get(playerId);
+    if (player && !player.alive) {
+      // If timer still running, mark that they want to respawn
+      player.wantsRespawn = true;
+      if (player.respawnTimer <= 0) {
+        player.wantsRespawn = false;
+        player.reset();
+        this.spawnAtRandom(player);
+      }
+    }
+  }
+
+  // --- Main update loop ---
+
+  update() {
+    this.tick++;
+    this.updatePositions();
+    this.autoFire();
+    this.updateProjectiles();
+    this.checkCollisions();
+    this.updateTimers();
+    this.spawnFood();
+    this.updateBots();
+    this.broadcastState();
+  }
+
+  updatePositions() {
+    for (const [, player] of this.players) {
+      if (!player.alive) continue;
+
+      // Calculate max speed (with spawn speed boost)
+      let maxSpeed = player.speed;
+      if (player.invulnTicks > 0) {
+        const boostFade = player.invulnTicks / config.INVULNERABILITY_TICKS;
+        maxSpeed *= 1 + (config.SPAWN_SPEED_BOOST - 1) * boostFade;
+      }
+
+      // Boost increases max speed while active
+      if (player.boostTicks > 0) {
+        maxSpeed *= config.BOOST_MULTIPLIER;
+        player.boostTicks--;
+      }
+
+      // Physics: accelerate toward desired velocity
+      const targetVx = player.inputDx * maxSpeed;
+      const targetVy = player.inputDy * maxSpeed;
+
+      if (player.inputDx !== 0 || player.inputDy !== 0) {
+        // Accelerate toward target
+        player.vx += (targetVx - player.vx) * config.ACCELERATION;
+        player.vy += (targetVy - player.vy) * config.ACCELERATION;
+      } else {
+        // No input: apply friction (glide to stop)
+        player.vx *= config.FRICTION;
+        player.vy *= config.FRICTION;
+
+        // Stop completely if very slow
+        if (Math.abs(player.vx) < 0.05) player.vx = 0;
+        if (Math.abs(player.vy) < 0.05) player.vy = 0;
+      }
+
+      // Tick down boost cooldown
+      if (player.boostCooldown > 0) player.boostCooldown--;
+
+      // Apply velocity to position
+      player.x += player.vx;
+      player.y += player.vy;
+
+      // Clamp to map bounds (and zero out velocity if hitting wall)
+      if (player.x < player.radius) { player.x = player.radius; player.vx = 0; }
+      if (player.x > this.mapWidth - player.radius) { player.x = this.mapWidth - player.radius; player.vx = 0; }
+      if (player.y < player.radius) { player.y = player.radius; player.vy = 0; }
+      if (player.y > this.mapHeight - player.radius) { player.y = this.mapHeight - player.radius; player.vy = 0; }
+
+      // Resolve obstacle collisions
+      for (const obs of this.obstacles) {
+        if (circleRect(player, obs)) {
+          resolveCircleRect(player, obs);
+          // Dampen velocity on obstacle hit
+          player.vx *= 0.5;
+          player.vy *= 0.5;
+        }
+      }
+
+      // Aim angle
+      player.angle = player.aimAngle;
+
+      // Health regen
+      if (player.health < player.maxHealth) {
+        player.health = Math.min(player.maxHealth, player.health + config.HEALTH_REGEN);
+      }
+    }
+  }
+
+  autoFire() {
+    for (const [, player] of this.players) {
+      if (!player.alive) continue;
+
+      player.fireCooldown--;
+      if (player.fireCooldown > 0) continue;
+
+      const barrels = config.getBarrelsForTier(player.tier);
+      const bulletRadius = config.bulletRadiusFromPlayerRadius(player.radius);
+      const bulletDamage = config.bulletDamageFromPlayerRadius(player.radius);
+
+      for (const barrel of barrels) {
+        const angle = player.aimAngle + barrel.angle;
+        const spawnDist = player.radius * barrel.length;
+        const bx = player.x + Math.cos(angle) * spawnDist;
+        const by = player.y + Math.sin(angle) * spawnDist;
+
+        this.projectiles.push(new Projectile(
+          bx, by, angle, bulletRadius, bulletDamage, player.id, player.color
+        ));
+      }
+
+      player.fireCooldown = config.fireRateFromRadius(player.radius);
+    }
+  }
+
+  updateProjectiles() {
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const proj = this.projectiles[i];
+      proj.update();
+
+      if (proj.isExpired() || proj.isOutOfBounds(this.mapWidth, this.mapHeight)) {
+        this.projectiles.splice(i, 1);
+        continue;
+      }
+
+      // Obstacle collision
+      for (const obs of this.obstacles) {
+        if (circleRect(proj, obs)) {
+          this.projectiles.splice(i, 1);
+          break;
+        }
+      }
+    }
+  }
+
+  checkCollisions() {
+    this.spatialHash.clear();
+
+    // Insert all alive entities
+    for (const [, player] of this.players) {
+      if (player.alive) this.spatialHash.insert(player);
+    }
+    for (const proj of this.projectiles) {
+      this.spatialHash.insert(proj);
+    }
+    for (const f of this.food) {
+      this.spatialHash.insert(f);
+    }
+
+    // Check player collisions
+    const processed = new Set();
+    for (const [, player] of this.players) {
+      if (!player.alive) continue;
+
+      const candidates = this.spatialHash.query(player);
+      for (const other of candidates) {
+        if (!circleCircle(player, other)) continue;
+
+        if (other.type === 'food') {
+          player.score += other.value;
+          player.updateStats();
+          this.removeFood(other);
+        } else if (other.type === 'player' && other.alive && other.id !== player.id) {
+          // Avoid double-processing
+          const pairKey = player.id < other.id ? player.id + ':' + other.id : other.id + ':' + player.id;
+          if (processed.has(pairKey)) continue;
+          processed.add(pairKey);
+
+          // Skip if both invulnerable
+          if (player.invulnTicks > 0 && other.invulnTicks > 0) continue;
+
+          // Ram damage
+          if (player.invulnTicks <= 0 && other.invulnTicks <= 0) {
+            const dmgToOther = config.ramDamage(player.radius, other.radius);
+            const dmgToPlayer = config.ramDamage(other.radius, player.radius);
+            other.health -= dmgToOther;
+            player.health -= dmgToPlayer;
+          } else if (player.invulnTicks > 0) {
+            // Only other takes damage
+            other.health -= config.ramDamage(player.radius, other.radius);
+          } else {
+            player.health -= config.ramDamage(other.radius, player.radius);
+          }
+
+          resolveCircleCircle(player, other);
+
+          if (other.health <= 0 && other.alive) this.killPlayer(other, player);
+          if (player.health <= 0 && player.alive) this.killPlayer(player, other);
+        } else if (other.type === 'projectile' && other.ownerId !== player.id) {
+          if (player.invulnTicks > 0) continue;
+
+          player.health -= other.damage;
+          this.removeProjectile(other);
+
+          if (player.health <= 0 && player.alive) {
+            const killer = this.players.get(other.ownerId);
+            this.killPlayer(player, killer);
+          }
+        }
+      }
+    }
+  }
+
+  killPlayer(victim, killer) {
+    victim.alive = false;
+    victim.respawnTimer = config.RESPAWN_DELAY;
+
+    if (killer && killer.alive) {
+      killer.score += Math.floor(victim.score * config.KILL_SCORE_PERCENT) + config.KILL_SCORE_FLAT;
+      killer.kills++;
+      killer.updateStats();
+    }
+
+    // Notify victim
+    if (victim.ws) {
+      this.sendTo(victim.ws, {
+        t: MSG.DEATH,
+        killerName: killer ? killer.name : null,
+        score: victim.score,
+        kills: victim.kills,
+      });
+    }
+
+    // Broadcast kill feed
+    this.broadcast({
+      t: MSG.KILL_FEED,
+      killer: killer ? killer.name : '???',
+      victim: victim.name,
+    });
+
+    // Scatter some food at death location
+    const foodCount = Math.min(15, Math.floor(victim.score / 50) + 2);
+    for (let i = 0; i < foodCount; i++) {
+      const angle = (i / foodCount) * Math.PI * 2;
+      const dist = 20 + Math.random() * 40;
+      const fx = victim.x + Math.cos(angle) * dist;
+      const fy = victim.y + Math.sin(angle) * dist;
+      if (fx > 0 && fx < this.mapWidth && fy > 0 && fy < this.mapHeight) {
+        this.food.push(new Food(fx, fy, config.FOOD_TYPES[0]));
+      }
+    }
+  }
+
+  updateTimers() {
+    for (const [, player] of this.players) {
+      if (!player.alive) {
+        player.respawnTimer--;
+        if (player.respawnTimer <= 0 && (player.isBot || player.wantsRespawn)) {
+          player.wantsRespawn = false;
+          player.reset();
+          this.spawnAtRandom(player);
+        }
+      }
+      if (player.invulnTicks > 0) {
+        player.invulnTicks--;
+      }
+    }
+  }
+
+  // --- Food ---
+
+  spawnFood() {
+    while (this.food.length < config.FOOD_TARGET_COUNT) {
+      const type = this.randomFoodType();
+      let x, y, valid;
+      let attempts = 0;
+      do {
+        x = 50 + Math.random() * (this.mapWidth - 100);
+        y = 50 + Math.random() * (this.mapHeight - 100);
+        valid = !this.obstacles.some(obs => circleRect({ x, y, radius: type.radius + 5 }, obs));
+        attempts++;
+      } while (!valid && attempts < 10);
+
+      this.food.push(new Food(x, y, type));
+    }
+  }
+
+  randomFoodType() {
+    const roll = Math.random() * 100;
+    let cumulative = 0;
+    for (const t of config.FOOD_TYPES) {
+      cumulative += t.weight;
+      if (roll < cumulative) return t;
+    }
+    return config.FOOD_TYPES[0];
+  }
+
+  removeFood(food) {
+    const idx = this.food.indexOf(food);
+    if (idx !== -1) this.food.splice(idx, 1);
+  }
+
+  removeProjectile(proj) {
+    const idx = this.projectiles.indexOf(proj);
+    if (idx !== -1) this.projectiles.splice(idx, 1);
+  }
+
+  // --- Bots ---
+
+  spawnBots() {
+    for (let i = 0; i < config.BOT_COUNT; i++) {
+      const bot = new Bot();
+      this.spawnAtRandom(bot.player);
+      this.players.set(bot.player.id, bot.player);
+      this.bots.push(bot);
+    }
+  }
+
+  updateBots() {
+    for (const bot of this.bots) {
+      bot.update(this);
+    }
+  }
+
+  // --- Spawning ---
+
+  spawnAtRandom(player) {
+    let bestX = this.mapWidth / 2;
+    let bestY = this.mapHeight / 2;
+    let bestMinDist = 0;
+
+    // Try multiple positions, pick the one farthest from any other player
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const x = 150 + Math.random() * (this.mapWidth - 300);
+      const y = 150 + Math.random() * (this.mapHeight - 300);
+
+      if (this.isNearObstacle(x, y, 80)) continue;
+
+      let minDist = Infinity;
+      for (const [, other] of this.players) {
+        if (other === player || !other.alive) continue;
+        const dx = other.x - x;
+        const dy = other.y - y;
+        const dist = dx * dx + dy * dy;
+        if (dist < minDist) minDist = dist;
+      }
+
+      if (minDist > bestMinDist) {
+        bestMinDist = minDist;
+        bestX = x;
+        bestY = y;
+      }
+    }
+
+    player.x = bestX;
+    player.y = bestY;
+  }
+
+  isNearObstacle(x, y, margin) {
+    return this.obstacles.some(obs =>
+      x > obs.x - margin && x < obs.x + obs.width + margin &&
+      y > obs.y - margin && y < obs.y + obs.height + margin
+    );
+  }
+
+  // --- Networking ---
+
+  broadcastState() {
+    // Build leaderboard once (all players, lightweight)
+    const leaderboard = [];
+    for (const [, p] of this.players) {
+      if (p.alive) {
+        leaderboard.push({ i: p.id, n: p.name, s: p.score, k: p.kills, c: p.color, ti: p.tier });
+      }
+    }
+    leaderboard.sort((a, b) => b.s - a.s);
+    const top10 = leaderboard.slice(0, 10);
+
+    for (const [, player] of this.players) {
+      if (!player.ws) continue; // skip bots
+
+      // Viewport culling
+      const zoom = 1.0 / (1 + (player.radius - 20) * 0.012);
+      const halfW = (player.viewportW || 1920) / zoom / 2 + 200;
+      const halfH = (player.viewportH || 1080) / zoom / 2 + 200;
+
+      const visiblePlayers = [];
+      for (const [, p] of this.players) {
+        if (Math.abs(p.x - player.x) < halfW && Math.abs(p.y - player.y) < halfH) {
+          visiblePlayers.push(p.serialize());
+        }
+      }
+
+      const visibleBullets = [];
+      for (const b of this.projectiles) {
+        if (Math.abs(b.x - player.x) < halfW && Math.abs(b.y - player.y) < halfH) {
+          visibleBullets.push(b.serialize());
+        }
+      }
+
+      const visibleFood = [];
+      for (const f of this.food) {
+        if (Math.abs(f.x - player.x) < halfW && Math.abs(f.y - player.y) < halfH) {
+          visibleFood.push(f.serialize());
+        }
+      }
+
+      this.sendTo(player.ws, {
+        t: MSG.STATE,
+        k: this.tick,
+        p: visiblePlayers,
+        b: visibleBullets,
+        f: visibleFood,
+        lb: top10,
+      });
+    }
+  }
+
+  sendTo(ws, data) {
+    if (ws.readyState === 1) {
+      ws.send(JSON.stringify(data));
+    }
+  }
+
+  broadcast(data) {
+    const msg = JSON.stringify(data);
+    for (const [, player] of this.players) {
+      if (player.ws && player.ws.readyState === 1) {
+        player.ws.send(msg);
+      }
+    }
+  }
+}
+
+module.exports = Game;

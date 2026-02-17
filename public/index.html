@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LevelUp</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="join-screen">
+    <h1>LEVELUP</h1>
+    <p class="subtitle">Grow. Shoot. Dominate.</p>
+    <div class="join-form">
+      <label for="name-input">Name</label>
+      <input type="text" id="name-input" maxlength="16" placeholder="Enter your name" autocomplete="off">
+      <label>Tank Color</label>
+      <div class="color-row">
+        <input type="color" id="color-input" value="#00e5ff">
+        <span>Pick your color</span>
+      </div>
+      <button id="play-btn">PLAY</button>
+    </div>
+  </div>
+
+  <canvas id="game-canvas"></canvas>
+
+  <div id="death-overlay">
+    <h2>YOU DIED</h2>
+    <p id="death-message"></p>
+    <div class="death-stats" id="death-stats"></div>
+    <button id="respawn-btn">RESPAWN</button>
+  </div>
+
+  <script src="/shared/constants.js"></script>
+  <script src="/js/Camera.js"></script>
+  <script src="/js/Input.js"></script>
+  <script src="/js/ParticleSystem.js"></script>
+  <script src="/js/TankRenderer.js"></script>
+  <script src="/js/HUD.js"></script>
+  <script src="/js/Renderer.js"></script>
+  <script src="/js/Network.js"></script>
+  <script src="/js/Interpolation.js"></script>
+  <script src="/js/main.js"></script>
+</body>
+</html>
