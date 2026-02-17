@@ -3,7 +3,7 @@ class Input {
     this.canvas = canvas;
     this.mouseX = canvas.width / 2;
     this.mouseY = canvas.height / 2;
-    this.boostPressed = false;
+    this.leftDown = false;
 
     canvas.addEventListener('mousemove', (e) => {
       this.mouseX = e.clientX;
@@ -11,8 +11,18 @@ class Input {
     });
 
     canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 0) this.boostPressed = true;
+      if (e.button === 0) this.leftDown = true;
       e.preventDefault();
+    });
+
+    canvas.addEventListener('mouseup', (e) => {
+      if (e.button === 0) this.leftDown = false;
+      e.preventDefault();
+    });
+
+    // Handle mouse leaving window
+    window.addEventListener('blur', () => {
+      this.leftDown = false;
     });
 
     // Prevent right-click context menu
@@ -39,11 +49,7 @@ class Input {
     return Math.atan2(world.y - playerY, world.x - playerX);
   }
 
-  consumeBoost() {
-    if (this.boostPressed) {
-      this.boostPressed = false;
-      return true;
-    }
-    return false;
+  isBoostHeld() {
+    return this.leftDown;
   }
 }

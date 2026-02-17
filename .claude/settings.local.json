@@ -15,7 +15,10 @@
       "mcp__puppeteer__puppeteer_evaluate",
       "Bash(pkill:*)",
       "Bash(timeout 3 node:*)",
-      "Bash(fuser:*)"
+      "Bash(fuser:*)",
+      "Bash(node -e:*)",
+      "Bash(node -c:*)",
+      "Bash(node:*)"
     ]
   }
 }

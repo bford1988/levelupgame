@@ -72,25 +72,31 @@ body {
   border-color: #00e5ff;
 }
 
-.color-row {
+.color-swatches {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 240px;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 260px;
+  justify-content: center;
 }
 
-.color-row input[type="color"] {
-  width: 44px;
-  height: 44px;
-  border: none;
-  border-radius: 6px;
+.color-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   cursor: pointer;
-  background: none;
+  border: 3px solid transparent;
+  transition: border-color 0.15s, transform 0.15s;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
 }
 
-.color-row span {
-  font-size: 14px;
-  color: #aaa;
+.color-swatch:hover {
+  transform: scale(1.15);
+}
+
+.color-swatch.selected {
+  border-color: #ffffff;
+  box-shadow: 0 0 12px currentColor;
 }
 
 #play-btn {

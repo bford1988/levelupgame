@@ -3,18 +3,18 @@ const config = require('./config');
 let nextBulletId = 1;
 
 class Projectile {
-  constructor(x, y, angle, radius, damage, ownerId, color) {
+  constructor(x, y, angle, radius, damage, ownerId, color, speed, lifetime) {
     this.id = 'b' + (nextBulletId++);
     this.type = 'projectile';
     this.x = x;
     this.y = y;
-    this.vx = Math.cos(angle) * config.BULLET_SPEED;
-    this.vy = Math.sin(angle) * config.BULLET_SPEED;
+    this.vx = Math.cos(angle) * (speed || config.BULLET_SPEED);
+    this.vy = Math.sin(angle) * (speed || config.BULLET_SPEED);
     this.radius = radius;
     this.damage = damage;
     this.ownerId = ownerId;
     this.color = color;
-    this.lifetime = config.BULLET_LIFETIME;
+    this.lifetime = lifetime || config.BULLET_LIFETIME;
   }
 
   update() {

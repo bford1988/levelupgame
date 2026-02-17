@@ -136,12 +136,103 @@ class Renderer {
     }
   }
 
+  drawMines(mines, camera) {
+    if (!mines) return;
+    const ctx = this.ctx;
+    const vp = camera.getViewport();
+    const time = Date.now() / 1000;
+
+    for (const m of mines) {
+      if (m.x < vp.left - 30 || m.x > vp.right + 30 ||
+          m.y < vp.top - 30 || m.y > vp.bottom + 30) continue;
+
+      const s = camera.worldToScreen(m.x, m.y);
+      const r = m.r * camera.zoom;
+      const pulse = 0.85 + Math.sin(time * 4 + m.x) * 0.15;
+
+      // Outer danger glow
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r * 2 * pulse, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,50,50,0.08)';
+      ctx.fill();
+
+      // Mine body
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r * pulse, 0, Math.PI * 2);
+      ctx.fillStyle = '#cc2200';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#ff4444';
+      ctx.stroke();
+
+      // Inner warning dot
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r * 0.35, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff8800';
+      ctx.fill();
+
+      // Spikes
+      for (let i = 0; i < 6; i++) {
+        const angle = (i / 6) * Math.PI * 2;
+        const sx = s.x + Math.cos(angle) * r * pulse;
+        const sy = s.y + Math.sin(angle) * r * pulse;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r * 0.2, 0, Math.PI * 2);
+        ctx.fillStyle = '#ff4444';
+        ctx.fill();
+      }
+    }
+  }
+
+  drawTurrets(turrets, camera) {
+    if (!turrets) return;
+    const ctx = this.ctx;
+    const vp = camera.getViewport();
+
+    for (const t of turrets) {
+      if (t.x < vp.left - 40 || t.x > vp.right + 40 ||
+          t.y < vp.top - 40 || t.y > vp.bottom + 40) continue;
+
+      const s = camera.worldToScreen(t.x, t.y);
+      const z = camera.zoom;
+      const baseR = 14 * z;
+
+      // Base circle
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, baseR, 0, Math.PI * 2);
+      ctx.fillStyle = '#553333';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#ff3333';
+      ctx.stroke();
+
+      // Barrel
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(t.a);
+      ctx.fillStyle = '#884444';
+      ctx.fillRect(baseR * 0.2, -baseR * 0.3, baseR * 1.5, baseR * 0.6);
+      ctx.strokeStyle = '#ff3333';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(baseR * 0.2, -baseR * 0.3, baseR * 1.5, baseR * 0.6);
+      ctx.restore();
+
+      // Center dot
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, baseR * 0.3, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff3333';
+      ctx.fill();
+    }
+  }
+
   render(state, camera, myId, mapWidth, mapHeight) {
     this.clear();
     this.drawGrid(camera);
     this.drawMapBorder(camera, mapWidth, mapHeight);
+    this.drawMines(state.mn, camera);
     this.drawFood(state.f, camera);
     this.drawObstacles(state.obs, camera);
+    this.drawTurrets(state.tu, camera);
     this.drawProjectiles(state.b, camera);
     this.drawTanks(state.p, camera, myId);
   }

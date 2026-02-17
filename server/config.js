@@ -21,10 +21,11 @@ const config = {
   ACCELERATION: 0.18,
   FRICTION: 0.94,
 
-  // Boost
+  // Boost (hold-to-use fuel system)
   BOOST_MULTIPLIER: 3.0,
-  BOOST_COOLDOWN: 150,
-  BOOST_DURATION: 100,
+  BOOST_FUEL_MAX: 180,      // ticks of full boost (~6 seconds)
+  BOOST_FUEL_DRAIN: 1,      // fuel consumed per tick while boosting
+  BOOST_FUEL_REGEN: 0.5,    // fuel recovered per tick while not boosting
 
   // Projectile base stats
   BASE_BULLET_RADIUS: 4,
@@ -38,6 +39,21 @@ const config = {
   RESPAWN_DELAY: 60,
   INVULNERABILITY_TICKS: 90,
   SPAWN_SPEED_BOOST: 1.8,
+
+  // Turrets (on some obstacles)
+  TURRET_CHANCE: 0.18,           // ~18% of obstacles get a turret
+  TURRET_RANGE: 600,
+  TURRET_FIRE_RATE: 30,          // ticks between shots
+  TURRET_BULLET_SPEED: 14,
+  TURRET_BULLET_DAMAGE: 12,
+  TURRET_BULLET_RADIUS: 5,
+  TURRET_BULLET_LIFETIME: 50,
+  TURRET_COLOR: '#ff3333',
+
+  // Mines
+  MINE_COUNT: 25,
+  MINE_RADIUS: 14,
+  MINE_DAMAGE_PERCENT: 0.5,      // 50% of max health
   HEALTH_REGEN: 0.5,
 
   // Kill reward
@@ -53,41 +69,109 @@ const config = {
     15000000, 24000000, 38000000, 60000000, 100000000,
   ],
 
-  // Map obstacles (spread across larger map)
+  // Map obstacles (spread across 10K x 10K map, ~80 total)
   OBSTACLES: [
     // Center cluster
     { x: 4800, y: 4800, width: 250, height: 250 },
     { x: 5100, y: 4700, width: 80, height: 200 },
     { x: 4600, y: 5100, width: 200, height: 80 },
-    // Quadrant anchors
+    { x: 5200, y: 5200, width: 100, height: 100 },
+    { x: 4400, y: 4500, width: 60, height: 180 },
+    // Quadrant anchors (NW, NE, SW, SE)
     { x: 2000, y: 2000, width: 180, height: 70 },
+    { x: 2200, y: 2200, width: 70, height: 130 },
     { x: 8000, y: 2000, width: 70, height: 180 },
+    { x: 7800, y: 2200, width: 130, height: 60 },
     { x: 2000, y: 8000, width: 100, height: 140 },
+    { x: 2300, y: 7800, width: 60, height: 100 },
     { x: 8000, y: 8000, width: 140, height: 100 },
-    // Mid-ring obstacles
+    { x: 7700, y: 8200, width: 100, height: 60 },
+    // Cardinal mid-ring
     { x: 5000, y: 1500, width: 120, height: 50 },
+    { x: 5200, y: 1600, width: 50, height: 100 },
     { x: 1500, y: 5000, width: 50, height: 120 },
+    { x: 1600, y: 5200, width: 100, height: 50 },
     { x: 5000, y: 8500, width: 120, height: 50 },
+    { x: 4800, y: 8400, width: 50, height: 100 },
     { x: 8500, y: 5000, width: 50, height: 120 },
-    // Scattered cover
+    { x: 8400, y: 4800, width: 100, height: 50 },
+    // Inner ring (r~2000 from center)
     { x: 3200, y: 3500, width: 90, height: 90 },
     { x: 6800, y: 3500, width: 90, height: 90 },
     { x: 3200, y: 6500, width: 90, height: 90 },
     { x: 6800, y: 6500, width: 90, height: 90 },
+    { x: 3800, y: 3000, width: 60, height: 120 },
+    { x: 6200, y: 3000, width: 120, height: 60 },
+    { x: 3800, y: 7000, width: 120, height: 60 },
+    { x: 6200, y: 7000, width: 60, height: 120 },
+    // Diagonal corridors
     { x: 3800, y: 1200, width: 60, height: 150 },
     { x: 6200, y: 8800, width: 150, height: 60 },
     { x: 1200, y: 3200, width: 150, height: 50 },
     { x: 8800, y: 7000, width: 50, height: 150 },
     { x: 7200, y: 1800, width: 100, height: 40 },
     { x: 2800, y: 8200, width: 40, height: 100 },
+    { x: 1800, y: 7200, width: 100, height: 40 },
+    { x: 8200, y: 2800, width: 40, height: 100 },
+    // Edge walls (north)
+    { x: 800, y: 500, width: 200, height: 50 },
+    { x: 2500, y: 400, width: 50, height: 150 },
+    { x: 4000, y: 600, width: 140, height: 60 },
+    { x: 6000, y: 500, width: 60, height: 140 },
+    { x: 7500, y: 400, width: 150, height: 50 },
+    { x: 9200, y: 600, width: 50, height: 130 },
+    // Edge walls (south)
+    { x: 800, y: 9400, width: 180, height: 50 },
+    { x: 2500, y: 9500, width: 50, height: 130 },
+    { x: 4000, y: 9300, width: 130, height: 60 },
+    { x: 6000, y: 9400, width: 60, height: 130 },
+    { x: 7500, y: 9500, width: 140, height: 50 },
+    { x: 9200, y: 9300, width: 50, height: 120 },
+    // Edge walls (west)
+    { x: 400, y: 1500, width: 50, height: 140 },
+    { x: 500, y: 3500, width: 130, height: 50 },
+    { x: 400, y: 6500, width: 50, height: 150 },
+    { x: 600, y: 8500, width: 120, height: 50 },
+    // Edge walls (east)
+    { x: 9500, y: 1500, width: 50, height: 140 },
+    { x: 9400, y: 3500, width: 120, height: 50 },
+    { x: 9500, y: 6500, width: 50, height: 150 },
+    { x: 9300, y: 8500, width: 130, height: 50 },
+    // Mid-field scattered cover
+    { x: 1500, y: 1500, width: 80, height: 80 },
+    { x: 3500, y: 2000, width: 110, height: 45 },
+    { x: 6500, y: 2000, width: 45, height: 110 },
+    { x: 8500, y: 1500, width: 80, height: 80 },
+    { x: 1500, y: 3800, width: 45, height: 100 },
+    { x: 8500, y: 3800, width: 100, height: 45 },
+    { x: 1500, y: 6200, width: 100, height: 45 },
+    { x: 8500, y: 6200, width: 45, height: 100 },
+    { x: 1500, y: 8500, width: 80, height: 80 },
+    { x: 3500, y: 8000, width: 45, height: 110 },
+    { x: 6500, y: 8000, width: 110, height: 45 },
+    { x: 8500, y: 8500, width: 80, height: 80 },
+    // Central cross corridors
+    { x: 4200, y: 5000, width: 40, height: 160 },
+    { x: 5800, y: 5000, width: 40, height: 160 },
+    { x: 5000, y: 4200, width: 160, height: 40 },
+    { x: 5000, y: 5800, width: 160, height: 40 },
+    // Additional mid-range cover
+    { x: 3000, y: 5000, width: 70, height: 130 },
+    { x: 7000, y: 5000, width: 130, height: 70 },
+    { x: 5000, y: 3000, width: 130, height: 70 },
+    { x: 5000, y: 7000, width: 70, height: 130 },
+    { x: 4000, y: 4000, width: 80, height: 80 },
+    { x: 6000, y: 4000, width: 80, height: 80 },
+    { x: 4000, y: 6000, width: 80, height: 80 },
+    { x: 6000, y: 6000, width: 80, height: 80 },
   ],
 
   // Formulas
   radiusFromScore(score) {
-    // Power curve - keeps growing, never truly caps
-    // score 100 → ~32, score 1K → 45, score 10K → 74
-    // score 100K → 136, score 1M → 270, score 10M → 540 (hits safety cap)
-    const raw = 20 + Math.pow(score, 0.33) * 2.5;
+    // Steeper power curve - noticeable growth early, tapers late
+    // score 1K → 56, score 5K → 86, score 25K → 140
+    // score 100K → 228, score 500K → 414, score 1M → 496 (near cap)
+    const raw = 20 + Math.pow(score, 0.38) * 2.5;
     return Math.min(raw, config.MAP_WIDTH * 0.05);
   },
   speedFromRadius(radius) {

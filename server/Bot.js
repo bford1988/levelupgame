@@ -31,6 +31,7 @@ class Bot {
     const p = this.player;
     if (!p.alive) return;
 
+    p.boostActive = false; // default off, FLEE state may turn on
     this.wanderTimer--;
 
     // Find nearest food and player
@@ -85,10 +86,11 @@ class Bot {
         p.inputDx = Math.cos(away);
         p.inputDy = Math.sin(away);
         p.aimAngle = away + Math.PI;
-        // Occasionally boost to escape
-        if (p.boostCooldown <= 0 && Math.random() < 0.02) {
-          p.boostCooldown = config.BOOST_COOLDOWN;
-          p.boostTicks = config.BOOST_DURATION;
+        // Occasionally boost to escape (hold for a bit)
+        if (p.boostFuel > config.BOOST_FUEL_MAX * 0.3 && Math.random() < 0.05) {
+          p.boostActive = true;
+        } else {
+          p.boostActive = false;
         }
         break;
       }

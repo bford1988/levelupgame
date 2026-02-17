@@ -62,10 +62,9 @@ class Network {
 
   sendInput(input, camera) {
     const now = Date.now();
-    const boost = input.consumeBoost();
 
-    // Always send immediately if boost, otherwise throttle to 30Hz
-    if (!boost && now - this.lastInputSend < 33) return;
+    // Throttle to 30Hz
+    if (now - this.lastInputSend < 33) return;
     this.lastInputSend = now;
 
     const px = this._lastX || 0;
@@ -76,7 +75,7 @@ class Network {
       dy: mov.dy,
       a: input.getAimAngle(camera, px, py),
     };
-    if (boost) msg.boost = 1;
+    if (input.isBoostHeld()) msg.boost = 1;
     this.send(MSG.INPUT, msg);
   }
 

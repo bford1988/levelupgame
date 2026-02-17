@@ -4,6 +4,7 @@ const Player = require('./Player');
 const Projectile = require('./Projectile');
 const Food = require('./Food');
 const Obstacle = require('./Obstacle');
+const Mine = require('./Mine');
 const Bot = require('./Bot');
 const SpatialHash = require('./SpatialHash');
 const { circleCircle, circleRect, resolveCircleCircle, resolveCircleRect } = require('./Collision');
@@ -14,19 +15,44 @@ class Game {
     this.projectiles = [];
     this.food = [];
     this.obstacles = [];
+    this.turrets = [];
+    this.mines = [];
+    this.explosions = []; // temporary, cleared after broadcast
     this.bots = [];
     this.spatialHash = new SpatialHash(200);
     this.tick = 0;
     this.mapWidth = config.MAP_WIDTH;
     this.mapHeight = config.MAP_HEIGHT;
 
-    // Create obstacles
+    // Create obstacles (some get turrets mounted on edges)
     for (const o of config.OBSTACLES) {
-      this.obstacles.push(new Obstacle(o.x, o.y, o.width, o.height));
+      const obs = new Obstacle(o.x, o.y, o.width, o.height);
+      this.obstacles.push(obs);
+
+      if (Math.random() < config.TURRET_CHANCE) {
+        // Pick a random edge to mount on
+        const edge = Math.floor(Math.random() * 4);
+        let tx, ty;
+        switch (edge) {
+          case 0: tx = o.x + o.width / 2; ty = o.y - 8; break;           // top
+          case 1: tx = o.x + o.width / 2; ty = o.y + o.height + 8; break; // bottom
+          case 2: tx = o.x - 8; ty = o.y + o.height / 2; break;           // left
+          case 3: tx = o.x + o.width + 8; ty = o.y + o.height / 2; break;  // right
+        }
+        this.turrets.push({
+          x: tx,
+          y: ty,
+          angle: 0,
+          fireCooldown: Math.floor(Math.random() * config.TURRET_FIRE_RATE),
+        });
+      }
     }
 
     // Spawn initial food
     this.spawnFood();
+
+    // Spawn mines
+    this.spawnMines();
 
     // Spawn bots
     this.spawnBots();
@@ -83,11 +109,14 @@ class Game {
   update() {
     this.tick++;
     this.updatePositions();
+    this.attractFood();
     this.autoFire();
+    this.updateTurrets();
     this.updateProjectiles();
     this.checkCollisions();
     this.updateTimers();
     this.spawnFood();
+    this.spawnMines();
     this.updateBots();
     this.broadcastState();
   }
@@ -103,10 +132,13 @@ class Game {
         maxSpeed *= 1 + (config.SPAWN_SPEED_BOOST - 1) * boostFade;
       }
 
-      // Boost increases max speed while active
-      if (player.boostTicks > 0) {
+      // Boost: hold-to-use fuel system
+      if (player.boostActive && player.boostFuel > 0) {
         maxSpeed *= config.BOOST_MULTIPLIER;
-        player.boostTicks--;
+        player.boostFuel = Math.max(0, player.boostFuel - config.BOOST_FUEL_DRAIN);
+      } else if (!player.boostActive) {
+        // Only regen fuel when button is released
+        player.boostFuel = Math.min(config.BOOST_FUEL_MAX, player.boostFuel + config.BOOST_FUEL_REGEN);
       }
 
       // Physics: accelerate toward desired velocity
@@ -127,9 +159,6 @@ class Game {
         if (Math.abs(player.vy) < 0.05) player.vy = 0;
       }
 
-      // Tick down boost cooldown
-      if (player.boostCooldown > 0) player.boostCooldown--;
-
       // Apply velocity to position
       player.x += player.vx;
       player.y += player.vy;
@@ -140,13 +169,43 @@ class Game {
       if (player.y < player.radius) { player.y = player.radius; player.vy = 0; }
       if (player.y > this.mapHeight - player.radius) { player.y = this.mapHeight - player.radius; player.vy = 0; }
 
-      // Resolve obstacle collisions
+      // Resolve obstacle collisions (bounce + damage)
       for (const obs of this.obstacles) {
         if (circleRect(player, obs)) {
+          // Compute collision normal before resolving
+          const closestX = Math.max(obs.x, Math.min(player.x, obs.x + obs.width));
+          const closestY = Math.max(obs.y, Math.min(player.y, obs.y + obs.height));
+          const dx = player.x - closestX;
+          const dy = player.y - closestY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
           resolveCircleRect(player, obs);
-          // Dampen velocity on obstacle hit
-          player.vx *= 0.5;
-          player.vy *= 0.5;
+
+          if (dist > 0) {
+            const nx = dx / dist;
+            const ny = dy / dist;
+
+            // Reflect velocity off surface
+            const dot = player.vx * nx + player.vy * ny;
+            player.vx -= 2 * dot * nx;
+            player.vy -= 2 * dot * ny;
+
+            // Lose energy on bounce
+            player.vx *= 0.6;
+            player.vy *= 0.6;
+
+            // Damage proportional to impact speed (ignore gentle touches)
+            const impactSpeed = Math.abs(dot);
+            if (impactSpeed > 1.5) {
+              player.health -= impactSpeed * 0.8;
+              if (player.health <= 0 && player.alive) {
+                this.killPlayer(player, null);
+              }
+            }
+          } else {
+            player.vx *= -0.5;
+            player.vy *= -0.5;
+          }
         }
       }
 
@@ -156,6 +215,30 @@ class Game {
       // Health regen
       if (player.health < player.maxHealth) {
         player.health = Math.min(player.maxHealth, player.health + config.HEALTH_REGEN);
+      }
+    }
+  }
+
+  attractFood() {
+    for (const [, player] of this.players) {
+      if (!player.alive) continue;
+
+      const attractRange = player.radius * 3;
+      const attractRangeSq = attractRange * attractRange;
+
+      for (const f of this.food) {
+        const dx = player.x - f.x;
+        const dy = player.y - f.y;
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq < attractRangeSq && distSq > 1) {
+          const dist = Math.sqrt(distSq);
+          // Stronger pull the closer the food is
+          const strength = 1 - dist / attractRange;
+          const pull = 2 + strength * 6;
+          f.x += (dx / dist) * pull;
+          f.y += (dy / dist) * pull;
+        }
       }
     }
   }
@@ -183,6 +266,53 @@ class Game {
       }
 
       player.fireCooldown = config.fireRateFromRadius(player.radius);
+    }
+  }
+
+  updateTurrets() {
+    const rangeSq = config.TURRET_RANGE * config.TURRET_RANGE;
+
+    for (const turret of this.turrets) {
+      turret.fireCooldown--;
+
+      // Find nearest alive player in range
+      let nearest = null;
+      let nearestDistSq = rangeSq;
+      for (const [, player] of this.players) {
+        if (!player.alive || player.invulnTicks > 0) continue;
+        const dx = player.x - turret.x;
+        const dy = player.y - turret.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq < nearestDistSq) {
+          nearestDistSq = distSq;
+          nearest = player;
+        }
+      }
+
+      if (nearest) {
+        // Rotate toward target
+        const targetAngle = Math.atan2(nearest.y - turret.y, nearest.x - turret.x);
+        let diff = targetAngle - turret.angle;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        turret.angle += diff * 0.08; // slow tracking
+
+        // Fire
+        if (turret.fireCooldown <= 0) {
+          turret.fireCooldown = config.TURRET_FIRE_RATE;
+          const bx = turret.x + Math.cos(turret.angle) * 20;
+          const by = turret.y + Math.sin(turret.angle) * 20;
+          this.projectiles.push(new Projectile(
+            bx, by, turret.angle,
+            config.TURRET_BULLET_RADIUS,
+            config.TURRET_BULLET_DAMAGE,
+            'turret',
+            config.TURRET_COLOR,
+            config.TURRET_BULLET_SPEED,
+            config.TURRET_BULLET_LIFETIME
+          ));
+        }
+      }
     }
   }
 
@@ -218,6 +348,9 @@ class Game {
     }
     for (const f of this.food) {
       this.spatialHash.insert(f);
+    }
+    for (const m of this.mines) {
+      this.spatialHash.insert(m);
     }
 
     // Check player collisions
@@ -268,6 +401,15 @@ class Game {
           if (player.health <= 0 && player.alive) {
             const killer = this.players.get(other.ownerId);
             this.killPlayer(player, killer);
+          }
+        } else if (other.type === 'mine') {
+          if (player.invulnTicks > 0) continue;
+          // Mine explosion: 50% max health damage
+          player.health -= player.maxHealth * config.MINE_DAMAGE_PERCENT;
+          this.explosions.push({ x: other.x, y: other.y, r: 80 });
+          this.removeMine(other);
+          if (player.health <= 0 && player.alive) {
+            this.killPlayer(player, null);
           }
         }
       }
@@ -366,6 +508,27 @@ class Game {
   removeProjectile(proj) {
     const idx = this.projectiles.indexOf(proj);
     if (idx !== -1) this.projectiles.splice(idx, 1);
+  }
+
+  // --- Mines ---
+
+  spawnMines() {
+    while (this.mines.length < config.MINE_COUNT) {
+      let x, y, valid;
+      let attempts = 0;
+      do {
+        x = 100 + Math.random() * (this.mapWidth - 200);
+        y = 100 + Math.random() * (this.mapHeight - 200);
+        valid = !this.obstacles.some(obs => circleRect({ x, y, radius: config.MINE_RADIUS + 10 }, obs));
+        attempts++;
+      } while (!valid && attempts < 10);
+      this.mines.push(new Mine(x, y));
+    }
+  }
+
+  removeMine(mine) {
+    const idx = this.mines.indexOf(mine);
+    if (idx !== -1) this.mines.splice(idx, 1);
   }
 
   // --- Bots ---
@@ -468,15 +631,43 @@ class Game {
         }
       }
 
-      this.sendTo(player.ws, {
+      const visibleMines = [];
+      for (const m of this.mines) {
+        if (Math.abs(m.x - player.x) < halfW && Math.abs(m.y - player.y) < halfH) {
+          visibleMines.push(m.serialize());
+        }
+      }
+
+      const visibleTurrets = [];
+      for (const t of this.turrets) {
+        if (Math.abs(t.x - player.x) < halfW && Math.abs(t.y - player.y) < halfH) {
+          visibleTurrets.push({ x: Math.round(t.x), y: Math.round(t.y), a: Math.round(t.angle * 100) / 100 });
+        }
+      }
+
+      const visibleExplosions = [];
+      for (const e of this.explosions) {
+        if (Math.abs(e.x - player.x) < halfW && Math.abs(e.y - player.y) < halfH) {
+          visibleExplosions.push(e);
+        }
+      }
+
+      const msg = {
         t: MSG.STATE,
         k: this.tick,
         p: visiblePlayers,
         b: visibleBullets,
         f: visibleFood,
+        mn: visibleMines,
+        tu: visibleTurrets,
         lb: top10,
-      });
+      };
+      if (visibleExplosions.length > 0) msg.ex = visibleExplosions;
+      this.sendTo(player.ws, msg);
     }
+
+    // Clear one-time events after broadcast
+    this.explosions = [];
   }
 
   sendTo(ws, data) {

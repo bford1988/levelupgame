@@ -14,10 +14,8 @@
       <label for="name-input">Name</label>
       <input type="text" id="name-input" maxlength="16" placeholder="Enter your name" autocomplete="off">
       <label>Tank Color</label>
-      <div class="color-row">
-        <input type="color" id="color-input" value="#00e5ff">
-        <span>Pick your color</span>
-      </div>
+      <div class="color-swatches" id="color-swatches"></div>
+      <input type="hidden" id="color-input" value="#00e5ff">
       <button id="play-btn">PLAY</button>
     </div>
   </div>
@@ -31,6 +29,36 @@
     <button id="respawn-btn">RESPAWN</button>
   </div>
 
+  <script>
+    (function() {
+      const NEON_COLORS = [
+        '#00e5ff', '#00ff88', '#ff00ff', '#ff3366',
+        '#ffff00', '#ff6600', '#00ff00', '#ff0066',
+        '#00ffff', '#ff4444', '#66ff00', '#ff00aa',
+        '#44ffcc', '#ff8800', '#aa00ff', '#00ffaa',
+      ];
+      const swatches = document.getElementById('color-swatches');
+      const colorInput = document.getElementById('color-input');
+      const startIdx = Math.floor(Math.random() * NEON_COLORS.length);
+
+      NEON_COLORS.forEach((color, i) => {
+        const swatch = document.createElement('div');
+        swatch.className = 'color-swatch';
+        swatch.style.backgroundColor = color;
+        swatch.dataset.color = color;
+        if (i === startIdx) {
+          swatch.classList.add('selected');
+          colorInput.value = color;
+        }
+        swatch.addEventListener('click', () => {
+          document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+          swatch.classList.add('selected');
+          colorInput.value = color;
+        });
+        swatches.appendChild(swatch);
+      });
+    })();
+  </script>
   <script src="/shared/constants.js"></script>
   <script src="/js/Camera.js"></script>
   <script src="/js/Input.js"></script>

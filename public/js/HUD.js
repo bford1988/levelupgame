@@ -1,6 +1,23 @@
 class HUD {
   constructor() {
     this.killFeed = [];
+    this.tierUpNotification = null;
+    this.scoreFlash = 0; // 0-1 flash intensity
+    this.damageFlash = 0; // 0-1 red vignette intensity
+    this.tierNames = [
+      '', 'Recruit', 'Soldier', 'Veteran', 'Fighter', 'Warrior',
+      'Guardian', 'Knight', 'Champion', 'Destroyer', 'Warlord',
+      'Titan', 'Conqueror', 'Overlord', 'Dominator', 'Annihilator',
+      'Behemoth', 'Leviathan', 'Colossus', 'Harbinger', 'Juggernaut',
+      'Sovereign', 'Apex Predator', 'World Eater', 'God King', 'Eternal',
+    ];
+    this.tierThresholds = [
+      0, 200, 600, 1200, 2500,
+      5000, 10000, 20000, 40000, 75000,
+      130000, 220000, 380000, 600000, 950000,
+      1500000, 2400000, 3800000, 6000000, 9500000,
+      15000000, 24000000, 38000000, 60000000, 100000000,
+    ];
   }
 
   formatScore(n) {
@@ -19,12 +36,33 @@ class HUD {
     if (this.killFeed.length > 5) this.killFeed.pop();
   }
 
+  showTierUp(tier) {
+    const name = this.tierNames[tier] || `Tier ${tier}`;
+    this.tierUpNotification = {
+      text: `TIER UP!`,
+      tierName: name,
+      time: Date.now(),
+      duration: 2500,
+    };
+  }
+
+  flashScore() {
+    this.scoreFlash = 1.0;
+  }
+
+  flashDamage(intensity) {
+    this.damageFlash = Math.min(1, Math.max(this.damageFlash, intensity));
+  }
+
   draw(ctx, state, me, canvas, mapWidth, mapHeight) {
     if (!state) return;
+    this.drawDamageVignette(ctx, canvas);
     this.drawLeaderboard(ctx, state.lb || state.p, me, canvas);
     this.drawMinimap(ctx, state, me, canvas, mapWidth, mapHeight);
+    this.drawTierProgress(ctx, me, canvas);
     this.drawScore(ctx, me, canvas);
     this.drawKillFeed(ctx, canvas);
+    this.drawTierUpNotification(ctx, canvas);
   }
 
   drawLeaderboard(ctx, players, me, canvas) {
@@ -151,35 +189,99 @@ class HUD {
     }
   }
 
+  drawTierProgress(ctx, me, canvas) {
+    if (!me) return;
+
+    const tier = me.ti || 1;
+    const score = me.s || 0;
+    const currentThreshold = this.tierThresholds[tier - 1] || 0;
+    const nextThreshold = this.tierThresholds[tier] || null;
+
+    // Don't show if at max tier
+    if (!nextThreshold) return;
+
+    let progress = (score - currentThreshold) / (nextThreshold - currentThreshold);
+    progress = Math.max(0, Math.min(1, progress));
+
+    const barW = 240;
+    const barH = 14;
+    const barX = canvas.width / 2 - barW / 2;
+    const barY = canvas.height - 90;
+
+    // Background
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+
+    // Empty bar
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(barX, barY, barW, barH);
+
+    // Fill bar
+    const nearLevelUp = progress > 0.85;
+    const barColor = nearLevelUp ? '#ffab00' : '#00e5ff';
+    ctx.fillStyle = barColor;
+    ctx.fillRect(barX, barY, barW * progress, barH);
+
+    // Pulsing glow when near tier-up
+    if (nearLevelUp) {
+      const pulse = 0.3 + Math.sin(Date.now() * 0.008) * 0.3;
+      ctx.fillStyle = `rgba(255, 171, 0, ${pulse})`;
+      ctx.fillRect(barX, barY, barW * progress, barH);
+    }
+
+    // Bar border
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(barX, barY, barW, barH);
+
+    // Label
+    ctx.font = '11px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = nearLevelUp ? '#ffab00' : '#8899aa';
+    const tierName = this.tierNames[tier] || `Tier ${tier}`;
+    const nextName = this.tierNames[tier + 1] || `Tier ${tier + 1}`;
+    ctx.fillText(`${tierName}  \u2192  ${nextName}`, canvas.width / 2, barY - 4);
+
+    // Percentage
+    ctx.font = '10px "Segoe UI", Arial, sans-serif';
+    ctx.fillStyle = '#ccc';
+    ctx.fillText(`${Math.floor(progress * 100)}%`, canvas.width / 2, barY + barH - 2);
+  }
+
   drawScore(ctx, me, canvas) {
     if (!me) return;
 
-    const tierNames = [
-      '', 'Recruit', 'Soldier', 'Veteran', 'Fighter', 'Warrior',
-      'Guardian', 'Knight', 'Champion', 'Destroyer', 'Warlord',
-      'Titan', 'Conqueror', 'Overlord', 'Dominator', 'Annihilator',
-      'Behemoth', 'Leviathan', 'Colossus', 'Harbinger', 'Juggernaut',
-      'Sovereign', 'Apex Predator', 'World Eater', 'God King', 'Eternal',
-    ];
     const tier = me.ti || 1;
 
     ctx.textAlign = 'center';
 
-    // Score
+    // Score with flash effect
     ctx.font = 'bold 20px "Segoe UI", Arial, sans-serif';
-    ctx.fillStyle = '#fff';
-    ctx.fillText(`Score: ${this.formatScore(me.s || 0)}`, canvas.width / 2, canvas.height - 50);
+    if (this.scoreFlash > 0) {
+      const flash = this.scoreFlash;
+      ctx.save();
+      ctx.shadowColor = '#00e5ff';
+      ctx.shadowBlur = 15 * flash;
+      ctx.fillStyle = `rgb(${Math.round(255)}, ${Math.round(255)}, ${Math.round(255)})`;
+      ctx.fillText(`Score: ${(me.s || 0).toLocaleString()}`, canvas.width / 2, canvas.height - 50);
+      ctx.restore();
+      this.scoreFlash = Math.max(0, this.scoreFlash - 0.03);
+    } else {
+      ctx.fillStyle = '#fff';
+      ctx.fillText(`Score: ${(me.s || 0).toLocaleString()}`, canvas.width / 2, canvas.height - 50);
+    }
 
     // Tier + kills
     ctx.font = '14px "Segoe UI", Arial, sans-serif';
     ctx.fillStyle = '#aaa';
-    ctx.fillText(`${tierNames[tier]} | Kills: ${me.k || 0}`, canvas.width / 2, canvas.height - 30);
+    ctx.fillText(`${this.tierNames[tier]} | Kills: ${me.k || 0}`, canvas.width / 2, canvas.height - 30);
 
-    // Boost cooldown indicator
-    const boostMax = me.bm || 150;
-    const boostCd = me.bc || 0;
-    const boostReady = boostCd <= 0;
-    const barW = 100;
+    // Boost fuel gauge
+    const fuelMax = me.bfm || 180;
+    const fuel = me.bf != null ? me.bf : fuelMax;
+    const fuelRatio = fuel / fuelMax;
+    const isBoosting = me.boosting;
+    const barW = 120;
     const barH = 8;
     const barX = canvas.width / 2 - barW / 2;
     const barY = canvas.height - 18;
@@ -187,20 +289,84 @@ class HUD {
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
     ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
 
-    if (boostReady) {
-      ctx.fillStyle = '#00e5ff';
-      ctx.fillRect(barX, barY, barW, barH);
-    } else {
-      const ratio = 1 - boostCd / boostMax;
-      ctx.fillStyle = '#335';
-      ctx.fillRect(barX, barY, barW, barH);
-      ctx.fillStyle = '#00e5ff';
-      ctx.fillRect(barX, barY, barW * ratio, barH);
-    }
+    // Empty bar
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fillRect(barX, barY, barW, barH);
+
+    // Fuel fill
+    const fuelColor = fuelRatio < 0.2 ? '#ff4444' : (isBoosting ? '#00ffcc' : '#00e5ff');
+    ctx.fillStyle = fuelColor;
+    ctx.fillRect(barX, barY, barW * fuelRatio, barH);
 
     ctx.font = '10px "Segoe UI", Arial, sans-serif';
-    ctx.fillStyle = boostReady ? '#00e5ff' : '#667';
-    ctx.fillText(boostReady ? 'BOOST READY [Click]' : 'BOOST', canvas.width / 2, barY - 3);
+    ctx.fillStyle = isBoosting ? '#00ffcc' : (fuelRatio > 0.99 ? '#00e5ff' : '#667');
+    const label = isBoosting ? 'BOOSTING' : (fuelRatio > 0.99 ? 'BOOST [Hold Click]' : 'BOOST');
+    ctx.fillText(label, canvas.width / 2, barY - 3);
+  }
+
+  drawTierUpNotification(ctx, canvas) {
+    if (!this.tierUpNotification) return;
+
+    const elapsed = Date.now() - this.tierUpNotification.time;
+    if (elapsed > this.tierUpNotification.duration) {
+      this.tierUpNotification = null;
+      return;
+    }
+
+    const progress = elapsed / this.tierUpNotification.duration;
+    // Fade in fast, hold, fade out
+    let alpha;
+    if (progress < 0.15) {
+      alpha = progress / 0.15;
+    } else if (progress < 0.6) {
+      alpha = 1;
+    } else {
+      alpha = 1 - (progress - 0.6) / 0.4;
+    }
+
+    // Scale punch effect
+    let scale = 1;
+    if (progress < 0.15) {
+      scale = 0.5 + progress / 0.15 * 0.7; // Scale up to 1.2
+    } else if (progress < 0.3) {
+      scale = 1.2 - (progress - 0.15) / 0.15 * 0.2; // Settle to 1.0
+    }
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, alpha);
+
+    // "TIER UP!" text
+    ctx.font = `bold ${Math.round(42 * scale)}px "Segoe UI", Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#00e5ff';
+    ctx.shadowBlur = 25;
+    ctx.fillStyle = '#00e5ff';
+    ctx.fillText(this.tierUpNotification.text, canvas.width / 2, canvas.height / 3);
+
+    // Tier name below
+    ctx.font = `bold ${Math.round(26 * scale)}px "Segoe UI", Arial, sans-serif`;
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = 15;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(this.tierUpNotification.tierName, canvas.width / 2, canvas.height / 3 + 40);
+
+    ctx.restore();
+  }
+
+  drawDamageVignette(ctx, canvas) {
+    if (this.damageFlash <= 0) return;
+
+    const alpha = this.damageFlash * 0.4;
+    const gradient = ctx.createRadialGradient(
+      canvas.width / 2, canvas.height / 2, canvas.width * 0.3,
+      canvas.width / 2, canvas.height / 2, canvas.width * 0.7
+    );
+    gradient.addColorStop(0, 'rgba(255,0,0,0)');
+    gradient.addColorStop(1, `rgba(255,0,0,${alpha})`);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    this.damageFlash = Math.max(0, this.damageFlash - 0.05);
   }
 
   drawKillFeed(ctx, canvas) {

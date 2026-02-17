@@ -35,9 +35,9 @@ class Player {
     this.inputDy = 0;
     this.aimAngle = 0;
 
-    // Boost
-    this.boostCooldown = 0;
-    this.boostTicks = 0; // remaining ticks of active boost
+    // Boost (fuel system)
+    this.boostFuel = config.BOOST_FUEL_MAX;
+    this.boostActive = false; // set by input each tick
 
     // Viewport (for culling)
     this.viewportW = 1920;
@@ -49,11 +49,8 @@ class Player {
     this.inputDy = input.dy || 0;
     if (input.a !== undefined) this.aimAngle = input.a;
 
-    // Boost request
-    if (input.boost && this.boostCooldown <= 0 && this.alive) {
-      this.boostCooldown = config.BOOST_COOLDOWN;
-      this.boostTicks = config.BOOST_DURATION;
-    }
+    // Boost: held by client, server manages fuel
+    this.boostActive = !!(input.boost && this.alive);
   }
 
   updateStats() {
@@ -86,8 +83,8 @@ class Player {
     this.vy = 0;
     this.inputDx = 0;
     this.inputDy = 0;
-    this.boostCooldown = 0;
-    this.boostTicks = 0;
+    this.boostFuel = config.BOOST_FUEL_MAX;
+    this.boostActive = false;
   }
 
   serialize() {
@@ -106,9 +103,9 @@ class Player {
       ti: this.tier,
       al: this.alive ? 1 : 0,
       inv: this.invulnTicks > 0 ? 1 : 0,
-      bc: this.boostCooldown, // boost cooldown remaining
-      bm: config.BOOST_COOLDOWN, // boost cooldown max (for UI)
-      boosting: this.boostTicks > 0 ? 1 : 0,
+      bf: Math.round(this.boostFuel),     // boost fuel remaining
+      bfm: config.BOOST_FUEL_MAX,          // boost fuel max (for UI)
+      boosting: this.boostActive && this.boostFuel > 0 ? 1 : 0,
     };
   }
 }
