@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__filesystem__directory_tree",
+      "mcp__filesystem__list_allowed_directories",
+      "mcp__filesystem__list_directory",
+      "mcp__filesystem__read_file",
+      "mcp__filesystem__search_files",
+      "WebSearch",
+      "Bash(npm install:*)",
+      "mcp__puppeteer__puppeteer_navigate",
+      "mcp__puppeteer__puppeteer_screenshot",
+      "mcp__puppeteer__puppeteer_fill",
+      "mcp__puppeteer__puppeteer_click",
+      "mcp__puppeteer__puppeteer_evaluate",
+      "Bash(pkill:*)",
+      "Bash(timeout 3 node:*)",
+      "Bash(fuser:*)"
+    ]
+  }
+}
