@@ -3,7 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 const config = require('./config');
-const Game = require('./Game');
+const InstanceManager = require('./InstanceManager');
+const { filterText } = require('./profanity');
 const { MSG } = require('../shared/constants');
 
 const MIME_TYPES = {
@@ -45,7 +46,7 @@ function serveStatic(req, res) {
 
 const server = http.createServer(serveStatic);
 const wss = new WebSocketServer({ server });
-const game = new Game();
+const manager = new InstanceManager();
 
 wss.on('connection', (ws) => {
   let player = null;
@@ -59,15 +60,22 @@ wss.on('connection', (ws) => {
     }
 
     switch (msg.t) {
-      case MSG.JOIN:
-        player = game.addPlayer(ws, msg.name || 'Player', msg.color || '#00e5ff');
-        console.log(`${player.name} joined (${player.id})`);
+      case MSG.JOIN: {
+        const name = filterText((msg.name || 'Player').slice(0, 16));
+        const catchphrase = filterText(
+          typeof msg.catchphrase === 'string' ? msg.catchphrase.slice(0, 40) : ''
+        );
+        player = manager.addPlayer(ws, name, msg.color || '#00e5ff', catchphrase);
+        if (player) {
+          console.log(`${player.name} joined instance ${player._instance.instanceId} (${player.id})`);
+        }
         break;
+      }
       case MSG.INPUT:
-        if (player) game.handleInput(player.id, msg);
+        if (player && player._instance) player._instance.handleInput(player.id, msg);
         break;
       case MSG.RESPAWN:
-        if (player) game.handleRespawn(player.id);
+        if (player && player._instance) player._instance.handleRespawn(player.id);
         break;
       case MSG.VIEWPORT:
         if (player) {
@@ -81,12 +89,11 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     if (player) {
       console.log(`${player.name} left (${player.id})`);
-      game.removePlayer(player.id);
+      manager.removePlayer(player);
+      player = null;
     }
   });
 });
-
-game.start();
 
 server.listen(config.PORT, () => {
   console.log(`Server running at http://localhost:${config.PORT}`);

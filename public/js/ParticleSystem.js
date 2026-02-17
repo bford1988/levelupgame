@@ -57,6 +57,21 @@ class ParticleSystem {
     });
   }
 
+  emitCatchphrase(text, x, y, color) {
+    this.particles.push({
+      x,
+      y,
+      color,
+      text,
+      fontSize: 32,
+      isText: true,
+      vx: 0,
+      vy: -0.6,
+      life: 3.5,
+      maxLife: 3.5,
+    });
+  }
+
   emitTierUp(x, y, color) {
     // Big radial burst
     for (let i = 0; i < 50; i++) {

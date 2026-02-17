@@ -11,37 +11,77 @@ class Renderer {
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  drawGrid(camera) {
+  drawGrid(camera, mapWidth, mapHeight) {
     const ctx = this.ctx;
     const vp = camera.getViewport();
     const gs = this.gridSize;
 
-    const startX = Math.floor(vp.left / gs) * gs;
-    const startY = Math.floor(vp.top / gs) * gs;
+    // Clamp grid to map bounds
+    const left = Math.max(0, vp.left);
+    const top = Math.max(0, vp.top);
+    const right = Math.min(mapWidth, vp.right);
+    const bottom = Math.min(mapHeight, vp.bottom);
 
-    ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-    ctx.lineWidth = 1;
+    const startX = Math.ceil(left / gs) * gs;
+    const startY = Math.ceil(top / gs) * gs;
 
-    ctx.beginPath();
-    for (let x = startX; x <= vp.right; x += gs) {
-      const s = camera.worldToScreen(x, 0);
-      ctx.moveTo(s.x, 0);
-      ctx.lineTo(s.x, this.canvas.height);
+    const dotR = Math.max(1, 1.2 * camera.zoom);
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+
+    for (let x = startX; x <= right; x += gs) {
+      for (let y = startY; y <= bottom; y += gs) {
+        const s = camera.worldToScreen(x, y);
+        ctx.fillRect(s.x - dotR, s.y - dotR, dotR * 2, dotR * 2);
+      }
     }
-    for (let y = startY; y <= vp.bottom; y += gs) {
-      const s = camera.worldToScreen(0, y);
-      ctx.moveTo(0, s.y);
-      ctx.lineTo(this.canvas.width, s.y);
-    }
-    ctx.stroke();
   }
 
-  drawMapBorder(camera, mapWidth, mapHeight) {
+  drawOutOfBounds(camera, mapWidth, mapHeight) {
     const ctx = this.ctx;
     const tl = camera.worldToScreen(0, 0);
     const br = camera.worldToScreen(mapWidth, mapHeight);
+    const cw = this.canvas.width;
+    const ch = this.canvas.height;
 
-    ctx.strokeStyle = 'rgba(255,60,60,0.4)';
+    // Fill out-of-bounds regions with dark overlay + red tint
+    ctx.fillStyle = 'rgba(40, 8, 8, 0.55)';
+
+    // Top strip
+    if (tl.y > 0) ctx.fillRect(0, 0, cw, tl.y);
+    // Bottom strip
+    if (br.y < ch) ctx.fillRect(0, br.y, cw, ch - br.y);
+    // Left strip (between top and bottom)
+    if (tl.x > 0) ctx.fillRect(0, tl.y, tl.x, br.y - tl.y);
+    // Right strip (between top and bottom)
+    if (br.x < cw) ctx.fillRect(br.x, tl.y, cw - br.x, br.y - tl.y);
+
+    // Diagonal hash lines over out-of-bounds areas
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 30, 30, 0.07)';
+    ctx.lineWidth = 2;
+    const spacing = 24;
+
+    // Clip to only the out-of-bounds region (inverse of map rect)
+    ctx.beginPath();
+    ctx.rect(0, 0, cw, ch);
+    // Cut out the map area (counter-clockwise for inverse clip)
+    ctx.moveTo(tl.x, tl.y);
+    ctx.lineTo(tl.x, br.y);
+    ctx.lineTo(br.x, br.y);
+    ctx.lineTo(br.x, tl.y);
+    ctx.closePath();
+    ctx.clip('evenodd');
+
+    ctx.beginPath();
+    for (let i = -ch; i < cw + ch; i += spacing) {
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i + ch, ch);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    // Border line
+    ctx.strokeStyle = 'rgba(255, 40, 40, 0.5)';
     ctx.lineWidth = 3 * camera.zoom;
     ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
   }
@@ -227,8 +267,8 @@ class Renderer {
 
   render(state, camera, myId, mapWidth, mapHeight) {
     this.clear();
-    this.drawGrid(camera);
-    this.drawMapBorder(camera, mapWidth, mapHeight);
+    this.drawGrid(camera, mapWidth, mapHeight);
+    this.drawOutOfBounds(camera, mapWidth, mapHeight);
     this.drawMines(state.mn, camera);
     this.drawFood(state.f, camera);
     this.drawObstacles(state.obs, camera);

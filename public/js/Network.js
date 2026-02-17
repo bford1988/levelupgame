@@ -9,17 +9,20 @@ class Network {
     this.onWelcome = null;
     this.onDeath = null;
     this.onKillFeed = null;
+    this.instanceId = null;
     this.connected = false;
     this.lastInputSend = 0;
   }
 
-  connect(name, color) {
+  connect(name, color, catchphrase) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     this.ws = new WebSocket(`${protocol}//${window.location.host}`);
 
     this.ws.onopen = () => {
       this.connected = true;
-      this.send(MSG.JOIN, { name, color });
+      const data = { name, color };
+      if (catchphrase) data.catchphrase = catchphrase;
+      this.send(MSG.JOIN, data);
     };
 
     this.ws.onmessage = (event) => {
@@ -36,6 +39,7 @@ class Network {
           this.mapWidth = msg.mw;
           this.mapHeight = msg.mh;
           this.obstacles = msg.obs;
+          this.instanceId = msg.inst || null;
           if (this.onWelcome) this.onWelcome(msg);
           break;
         case MSG.STATE:

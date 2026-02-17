@@ -27,10 +27,11 @@ class HUD {
     return '' + n;
   }
 
-  addKill(killerName, victimName) {
+  addKill(killerName, victimName, catchphrase) {
     this.killFeed.unshift({
       killer: killerName,
       victim: victimName,
+      catchphrase: catchphrase || '',
       time: Date.now(),
     });
     if (this.killFeed.length > 5) this.killFeed.pop();
@@ -54,7 +55,7 @@ class HUD {
     this.damageFlash = Math.min(1, Math.max(this.damageFlash, intensity));
   }
 
-  draw(ctx, state, me, canvas, mapWidth, mapHeight) {
+  draw(ctx, state, me, canvas, mapWidth, mapHeight, instanceId) {
     if (!state) return;
     this.drawDamageVignette(ctx, canvas);
     this.drawLeaderboard(ctx, state.lb || state.p, me, canvas);
@@ -63,6 +64,7 @@ class HUD {
     this.drawScore(ctx, me, canvas);
     this.drawKillFeed(ctx, canvas);
     this.drawTierUpNotification(ctx, canvas);
+    this.drawInstanceId(ctx, canvas, instanceId);
   }
 
   drawLeaderboard(ctx, players, me, canvas) {
@@ -72,28 +74,28 @@ class HUD {
       .sort((a, b) => b.s - a.s)
       .slice(0, 10);
 
-    const x = canvas.width - 210;
+    const w = 270;
+    const x = canvas.width - w - 10;
     const y = 10;
-    const rowH = 24;
-    const w = 200;
-    const h = 30 + sorted.length * rowH;
+    const rowH = 30;
+    const h = 38 + sorted.length * rowH;
 
     // Background
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.fillRect(x, y, w, h);
 
     // Title
-    ctx.font = 'bold 14px "Segoe UI", Arial, sans-serif';
+    ctx.font = 'bold 20px "Segoe UI", Arial, sans-serif';
     ctx.fillStyle = '#00e5ff';
     ctx.textAlign = 'center';
-    ctx.fillText('LEADERBOARD', x + w / 2, y + 20);
+    ctx.fillText('LEADERBOARD', x + w / 2, y + 26);
 
     // Rows
-    ctx.font = '12px "Segoe UI", Arial, sans-serif';
+    ctx.font = '16px "Segoe UI", Arial, sans-serif';
     ctx.textAlign = 'left';
     for (let i = 0; i < sorted.length; i++) {
       const p = sorted[i];
-      const ry = y + 30 + i * rowH;
+      const ry = y + 38 + i * rowH;
       const isMe = me && p.i === me.i;
 
       if (isMe) {
@@ -103,23 +105,23 @@ class HUD {
 
       // Rank
       ctx.fillStyle = '#888';
-      ctx.fillText(`${i + 1}.`, x + 8, ry + 16);
+      ctx.fillText(`${i + 1}.`, x + 10, ry + 20);
 
       // Color dot
       ctx.beginPath();
-      ctx.arc(x + 30, ry + 12, 5, 0, Math.PI * 2);
+      ctx.arc(x + 36, ry + 15, 6, 0, Math.PI * 2);
       ctx.fillStyle = p.c;
       ctx.fill();
 
       // Name
       ctx.fillStyle = isMe ? '#00e5ff' : '#ddd';
       const name = (p.n || '???').substring(0, 12);
-      ctx.fillText(name, x + 42, ry + 16);
+      ctx.fillText(name, x + 50, ry + 20);
 
       // Score + kills
       ctx.fillStyle = '#999';
       ctx.textAlign = 'right';
-      ctx.fillText(`${this.formatScore(p.s)} | ${p.k}K`, x + w - 8, ry + 16);
+      ctx.fillText(`${this.formatScore(p.s)} | ${p.k}K`, x + w - 10, ry + 20);
       ctx.textAlign = 'left';
     }
   }
@@ -203,10 +205,10 @@ class HUD {
     let progress = (score - currentThreshold) / (nextThreshold - currentThreshold);
     progress = Math.max(0, Math.min(1, progress));
 
-    const barW = 240;
-    const barH = 14;
+    const barW = 300;
+    const barH = 18;
     const barX = canvas.width / 2 - barW / 2;
-    const barY = canvas.height - 90;
+    const barY = canvas.height - 110;
 
     // Background
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -235,15 +237,15 @@ class HUD {
     ctx.strokeRect(barX, barY, barW, barH);
 
     // Label
-    ctx.font = '11px "Segoe UI", Arial, sans-serif';
+    ctx.font = '15px "Segoe UI", Arial, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillStyle = nearLevelUp ? '#ffab00' : '#8899aa';
     const tierName = this.tierNames[tier] || `Tier ${tier}`;
     const nextName = this.tierNames[tier + 1] || `Tier ${tier + 1}`;
-    ctx.fillText(`${tierName}  \u2192  ${nextName}`, canvas.width / 2, barY - 4);
+    ctx.fillText(`${tierName}  \u2192  ${nextName}`, canvas.width / 2, barY - 6);
 
     // Percentage
-    ctx.font = '10px "Segoe UI", Arial, sans-serif';
+    ctx.font = '13px "Segoe UI", Arial, sans-serif';
     ctx.fillStyle = '#ccc';
     ctx.fillText(`${Math.floor(progress * 100)}%`, canvas.width / 2, barY + barH - 2);
   }
@@ -256,35 +258,35 @@ class HUD {
     ctx.textAlign = 'center';
 
     // Score with flash effect
-    ctx.font = 'bold 20px "Segoe UI", Arial, sans-serif';
+    ctx.font = 'bold 28px "Segoe UI", Arial, sans-serif';
     if (this.scoreFlash > 0) {
       const flash = this.scoreFlash;
       ctx.save();
       ctx.shadowColor = '#00e5ff';
       ctx.shadowBlur = 15 * flash;
       ctx.fillStyle = `rgb(${Math.round(255)}, ${Math.round(255)}, ${Math.round(255)})`;
-      ctx.fillText(`Score: ${(me.s || 0).toLocaleString()}`, canvas.width / 2, canvas.height - 50);
+      ctx.fillText(`Score: ${(me.s || 0).toLocaleString()}`, canvas.width / 2, canvas.height - 62);
       ctx.restore();
       this.scoreFlash = Math.max(0, this.scoreFlash - 0.03);
     } else {
       ctx.fillStyle = '#fff';
-      ctx.fillText(`Score: ${(me.s || 0).toLocaleString()}`, canvas.width / 2, canvas.height - 50);
+      ctx.fillText(`Score: ${(me.s || 0).toLocaleString()}`, canvas.width / 2, canvas.height - 62);
     }
 
     // Tier + kills
-    ctx.font = '14px "Segoe UI", Arial, sans-serif';
+    ctx.font = '20px "Segoe UI", Arial, sans-serif';
     ctx.fillStyle = '#aaa';
-    ctx.fillText(`${this.tierNames[tier]} | Kills: ${me.k || 0}`, canvas.width / 2, canvas.height - 30);
+    ctx.fillText(`${this.tierNames[tier]} | Kills: ${me.k || 0}`, canvas.width / 2, canvas.height - 38);
 
     // Boost fuel gauge
     const fuelMax = me.bfm || 180;
     const fuel = me.bf != null ? me.bf : fuelMax;
     const fuelRatio = fuel / fuelMax;
     const isBoosting = me.boosting;
-    const barW = 120;
-    const barH = 8;
+    const barW = 160;
+    const barH = 10;
     const barX = canvas.width / 2 - barW / 2;
-    const barY = canvas.height - 18;
+    const barY = canvas.height - 20;
 
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
     ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
@@ -298,10 +300,10 @@ class HUD {
     ctx.fillStyle = fuelColor;
     ctx.fillRect(barX, barY, barW * fuelRatio, barH);
 
-    ctx.font = '10px "Segoe UI", Arial, sans-serif';
+    ctx.font = '14px "Segoe UI", Arial, sans-serif';
     ctx.fillStyle = isBoosting ? '#00ffcc' : (fuelRatio > 0.99 ? '#00e5ff' : '#667');
     const label = isBoosting ? 'BOOSTING' : (fuelRatio > 0.99 ? 'BOOST [Hold Click]' : 'BOOST');
-    ctx.fillText(label, canvas.width / 2, barY - 3);
+    ctx.fillText(label, canvas.width / 2, barY - 4);
   }
 
   drawTierUpNotification(ctx, canvas) {
@@ -371,10 +373,9 @@ class HUD {
 
   drawKillFeed(ctx, canvas) {
     const now = Date.now();
-    ctx.font = '13px "Segoe UI", Arial, sans-serif';
     ctx.textAlign = 'left';
 
-    let y = 14;
+    let y = 28;
     for (let i = 0; i < this.killFeed.length; i++) {
       const entry = this.killFeed[i];
       const age = (now - entry.time) / 1000;
@@ -382,13 +383,32 @@ class HUD {
 
       const alpha = Math.max(0, 1 - age / 5);
       ctx.globalAlpha = alpha;
+      ctx.font = 'bold 24px "Segoe UI", Arial, sans-serif';
       ctx.fillStyle = '#ff8a80';
-      ctx.fillText(`${entry.killer} killed ${entry.victim}`, 10, y);
-      y += 18;
+      ctx.fillText(`${entry.killer} killed ${entry.victim}`, 14, y);
+      y += 32;
+
+      if (entry.catchphrase) {
+        ctx.font = 'italic 22px "Segoe UI", Arial, sans-serif';
+        ctx.fillStyle = '#ffcc80';
+        ctx.fillText(`  "${entry.catchphrase}"`, 14, y);
+        y += 28;
+      }
     }
     ctx.globalAlpha = 1.0;
 
     // Clean old entries
     this.killFeed = this.killFeed.filter(e => (now - e.time) < 5000);
+  }
+
+  drawInstanceId(ctx, canvas, instanceId) {
+    if (!instanceId) return;
+    ctx.save();
+    ctx.globalAlpha = 0.15;
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#888';
+    ctx.fillText(`inst: ${instanceId}`, 8, canvas.height - 6);
+    ctx.restore();
   }
 }

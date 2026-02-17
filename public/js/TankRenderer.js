@@ -314,20 +314,77 @@ class TankRenderer {
   }
 
   drawBoostTrail(ctx, screen, r, color, angle) {
+    const rgb = this.hexToRgb(color);
     const trailAngle = angle + Math.PI; // behind the tank
-    for (let i = 0; i < 5; i++) {
-      const dist = r * (0.8 + i * 0.4);
-      const spread = (Math.random() - 0.5) * r * 0.5;
-      const tx = screen.x + Math.cos(trailAngle) * dist + Math.cos(trailAngle + Math.PI / 2) * spread;
-      const ty = screen.y + Math.sin(trailAngle) * dist + Math.sin(trailAngle + Math.PI / 2) * spread;
-      const tr = r * (0.15 - i * 0.02);
-      ctx.beginPath();
-      ctx.arc(tx, ty, Math.max(1, tr), 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.4 - i * 0.07;
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1.0;
+    const flicker = 0.85 + Math.random() * 0.3;
+    const flameLen = r * 2.2 * flicker;
+    const baseWidth = r * 0.55;
+
+    // Perpendicular direction for flame width
+    const px = Math.cos(trailAngle + Math.PI / 2);
+    const py = Math.sin(trailAngle + Math.PI / 2);
+
+    // Flame origin (just behind the tank body)
+    const ox = screen.x + Math.cos(trailAngle) * r * 0.6;
+    const oy = screen.y + Math.sin(trailAngle) * r * 0.6;
+
+    // Flame tip
+    const tipX = ox + Math.cos(trailAngle) * flameLen;
+    const tipY = oy + Math.sin(trailAngle) * flameLen;
+
+    ctx.save();
+
+    // Outer flame (player color, wide, faded)
+    ctx.beginPath();
+    ctx.moveTo(ox + px * baseWidth, oy + py * baseWidth);
+    ctx.quadraticCurveTo(
+      ox + Math.cos(trailAngle) * flameLen * 0.5 + px * baseWidth * 0.3 + (Math.random() - 0.5) * r * 0.15,
+      oy + Math.sin(trailAngle) * flameLen * 0.5 + py * baseWidth * 0.3 + (Math.random() - 0.5) * r * 0.15,
+      tipX, tipY
+    );
+    ctx.quadraticCurveTo(
+      ox + Math.cos(trailAngle) * flameLen * 0.5 - px * baseWidth * 0.3 + (Math.random() - 0.5) * r * 0.15,
+      oy + Math.sin(trailAngle) * flameLen * 0.5 - py * baseWidth * 0.3 + (Math.random() - 0.5) * r * 0.15,
+      ox - px * baseWidth, oy - py * baseWidth
+    );
+    ctx.closePath();
+
+    // Gradient from color to transparent along the flame
+    const outerGrad = ctx.createLinearGradient(ox, oy, tipX, tipY);
+    outerGrad.addColorStop(0, `rgba(${rgb.r},${rgb.g},${rgb.b},0.6)`);
+    outerGrad.addColorStop(0.4, `rgba(${rgb.r},${rgb.g},${rgb.b},0.3)`);
+    outerGrad.addColorStop(1, `rgba(${rgb.r},${rgb.g},${rgb.b},0)`);
+    ctx.fillStyle = outerGrad;
+    ctx.fill();
+
+    // Inner flame (brighter white-hot core, narrower)
+    const innerWidth = baseWidth * 0.4;
+    const innerLen = flameLen * 0.6;
+    const innerTipX = ox + Math.cos(trailAngle) * innerLen;
+    const innerTipY = oy + Math.sin(trailAngle) * innerLen;
+
+    ctx.beginPath();
+    ctx.moveTo(ox + px * innerWidth, oy + py * innerWidth);
+    ctx.quadraticCurveTo(
+      ox + Math.cos(trailAngle) * innerLen * 0.5 + (Math.random() - 0.5) * r * 0.05,
+      oy + Math.sin(trailAngle) * innerLen * 0.5 + (Math.random() - 0.5) * r * 0.05,
+      innerTipX, innerTipY
+    );
+    ctx.quadraticCurveTo(
+      ox + Math.cos(trailAngle) * innerLen * 0.5 + (Math.random() - 0.5) * r * 0.05,
+      oy + Math.sin(trailAngle) * innerLen * 0.5 + (Math.random() - 0.5) * r * 0.05,
+      ox - px * innerWidth, oy - py * innerWidth
+    );
+    ctx.closePath();
+
+    const innerGrad = ctx.createLinearGradient(ox, oy, innerTipX, innerTipY);
+    innerGrad.addColorStop(0, 'rgba(255,255,255,0.7)');
+    innerGrad.addColorStop(0.5, `rgba(${Math.min(255, rgb.r + 100)},${Math.min(255, rgb.g + 100)},${Math.min(255, rgb.b + 100)},0.3)`);
+    innerGrad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = innerGrad;
+    ctx.fill();
+
+    ctx.restore();
   }
 
   drawName(ctx, screen, r, name, isMe, tier) {

@@ -27,11 +27,61 @@ body {
   z-index: 10;
 }
 
-#join-screen h1 {
-  font-size: 48px;
-  color: #00e5ff;
+.title-barrage {
+  display: flex;
+  gap: 4px;
   margin-bottom: 8px;
-  letter-spacing: 2px;
+  perspective: 600px;
+}
+
+.barrage-letter {
+  font-size: 64px;
+  font-weight: 900;
+  color: #00e5ff;
+  letter-spacing: 4px;
+  text-shadow:
+    0 0 10px #00e5ff,
+    0 0 30px #00e5ff88,
+    0 0 60px #00e5ff44;
+  display: inline-block;
+  animation:
+    barrage-drop 0.5s calc(var(--i) * 0.07s) both,
+    barrage-glow 2.5s calc(var(--i) * 0.3s) ease-in-out infinite;
+}
+
+@keyframes barrage-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-60px) rotateX(40deg) scale(0.5);
+    filter: blur(6px);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(6px) rotateX(-5deg) scale(1.05);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotateX(0deg) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes barrage-glow {
+  0%, 100% {
+    text-shadow:
+      0 0 10px #00e5ff,
+      0 0 30px #00e5ff88,
+      0 0 60px #00e5ff44;
+    color: #00e5ff;
+  }
+  50% {
+    text-shadow:
+      0 0 15px #00ffcc,
+      0 0 40px #00ffcc88,
+      0 0 80px #00ffcc44;
+    color: #00ffcc;
+  }
 }
 
 #join-screen .subtitle {
@@ -155,6 +205,14 @@ body {
   font-size: 16px;
   color: #aaa;
   margin-bottom: 24px;
+}
+
+#death-catchphrase {
+  font-size: 20px;
+  font-style: italic;
+  color: #ffcc80;
+  margin-bottom: 24px;
+  text-shadow: 0 0 10px rgba(255, 204, 128, 0.4);
 }
 
 #death-overlay button {

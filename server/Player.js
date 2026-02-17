@@ -3,11 +3,12 @@ const config = require('./config');
 let nextId = 1;
 
 class Player {
-  constructor(name, color, ws) {
+  constructor(name, color, ws, catchphrase) {
     this.id = 'p' + (nextId++);
     this.name = name;
     this.color = color;
     this.ws = ws; // null for bots
+    this.catchphrase = catchphrase || '';
     this.type = 'player';
 
     this.x = 0;

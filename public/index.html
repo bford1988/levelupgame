@@ -3,16 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LevelUp</title>
+  <title>Barrage</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
   <div id="join-screen">
-    <h1>LEVELUP</h1>
+    <div class="title-barrage">
+      <span class="barrage-letter" style="--i:0">B</span>
+      <span class="barrage-letter" style="--i:1">A</span>
+      <span class="barrage-letter" style="--i:2">R</span>
+      <span class="barrage-letter" style="--i:3">R</span>
+      <span class="barrage-letter" style="--i:4">A</span>
+      <span class="barrage-letter" style="--i:5">G</span>
+      <span class="barrage-letter" style="--i:6">E</span>
+    </div>
     <p class="subtitle">Grow. Shoot. Dominate.</p>
     <div class="join-form">
       <label for="name-input">Name</label>
       <input type="text" id="name-input" maxlength="16" placeholder="Enter your name" autocomplete="off">
+      <label for="catchphrase-input">Killshot Catchphrase</label>
+      <input type="text" id="catchphrase-input" maxlength="40" placeholder="e.g. Get rekt!" autocomplete="off">
       <label>Tank Color</label>
       <div class="color-swatches" id="color-swatches"></div>
       <input type="hidden" id="color-input" value="#00e5ff">

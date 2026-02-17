@@ -4,6 +4,7 @@ let myId = null;
 let lastTime = 0;
 let gameActive = false;
 let playerName = '';
+let playerCatchphrase = '';
 
 // Growth tracking
 let lastScore = 0;
@@ -16,6 +17,7 @@ let playerHealthMap = new Map(); // track health of all visible players
 const joinScreen = document.getElementById('join-screen');
 const nameInput = document.getElementById('name-input');
 const colorInput = document.getElementById('color-input');
+const catchphraseInput = document.getElementById('catchphrase-input');
 const playBtn = document.getElementById('play-btn');
 const deathOverlay = document.getElementById('death-overlay');
 const deathMessage = document.getElementById('death-message');
@@ -30,6 +32,7 @@ nameInput.addEventListener('keydown', (e) => {
 
 function startGame() {
   playerName = nameInput.value.trim() || 'Player';
+  playerCatchphrase = catchphraseInput.value.trim();
   const color = colorInput.value;
 
   // Setup canvas
@@ -70,7 +73,7 @@ function startGame() {
   };
 
   network.onDeath = (msg) => {
-    showDeathScreen(msg.killerName, msg.score, msg.kills);
+    showDeathScreen(msg.killerName, msg.score, msg.kills, msg.catchphrase);
     // Reset tracking on death
     lastScore = 0;
     lastTier = 0;
@@ -79,16 +82,26 @@ function startGame() {
   };
 
   network.onKillFeed = (msg) => {
-    hud.addKill(msg.killer, msg.victim);
+    hud.addKill(msg.killer, msg.victim, msg.catchphrase);
 
     // If I got the kill, celebration!
     if (msg.killer === playerName) {
       camera.shake(12);
     }
+
+    // Show catchphrase as floating world text at the kill location
+    if (msg.catchphrase && msg.x != null && msg.y != null) {
+      particles.emitCatchphrase(
+        `"${msg.catchphrase}"`,
+        msg.x,
+        msg.y - 30,
+        '#ffcc80'
+      );
+    }
   };
 
   // Connect
-  network.connect(playerName, color);
+  network.connect(playerName, color, playerCatchphrase);
   gameActive = true;
 
   // Start game loop
@@ -216,16 +229,25 @@ function gameLoop(timestamp) {
     // HUD
     const me2 = state.p.find(p => p.i === myId);
     if (me2) me2.zoom = camera.zoom;
-    hud.draw(renderer.ctx, stateWithObs, me2, canvas, network.mapWidth, network.mapHeight);
+    hud.draw(renderer.ctx, stateWithObs, me2, canvas, network.mapWidth, network.mapHeight, network.instanceId);
   }
 
   requestAnimationFrame(gameLoop);
 }
 
-function showDeathScreen(killerName, score, kills) {
+function showDeathScreen(killerName, score, kills, catchphrase) {
   deathOverlay.style.display = 'flex';
   deathMessage.textContent = killerName ? `Killed by ${killerName}` : 'You died!';
-  deathStats.textContent = `Score: ${score || 0} | Kills: ${kills || 0}`;
+  deathStats.innerHTML = `Score: ${score || 0} | Kills: ${kills || 0}`;
+  // Show killer's catchphrase
+  const existing = document.getElementById('death-catchphrase');
+  if (existing) existing.remove();
+  if (catchphrase && killerName) {
+    const el = document.createElement('p');
+    el.id = 'death-catchphrase';
+    el.textContent = `"${catchphrase}"`;
+    deathStats.insertAdjacentElement('afterend', el);
+  }
 }
 
 respawnBtn.addEventListener('click', () => {

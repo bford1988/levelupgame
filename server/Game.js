@@ -21,6 +21,8 @@ class Game {
     this.bots = [];
     this.spatialHash = new SpatialHash(200);
     this.tick = 0;
+    this.loopInterval = null;
+    this.instanceId = null; // set by InstanceManager
     this.mapWidth = config.MAP_WIDTH;
     this.mapHeight = config.MAP_HEIGHT;
 
@@ -59,14 +61,39 @@ class Game {
   }
 
   start() {
-    setInterval(() => this.update(), 1000 / config.TICK_RATE);
-    console.log(`Game loop started at ${config.TICK_RATE}Hz`);
+    if (this.loopInterval) return;
+    this.loopInterval = setInterval(() => this.update(), 1000 / config.TICK_RATE);
+    console.log(`Game instance ${this.instanceId || '?'} started at ${config.TICK_RATE}Hz`);
   }
 
-  addPlayer(ws, name, color) {
-    const player = new Player(name, color, ws);
+  stop() {
+    if (this.loopInterval) {
+      clearInterval(this.loopInterval);
+      this.loopInterval = null;
+    }
+    for (const [, player] of this.players) {
+      if (player.ws && player.ws.readyState === 1) {
+        player.ws.close();
+      }
+    }
+    this.players.clear();
+    this.bots = [];
+    console.log(`Game instance ${this.instanceId || '?'} stopped`);
+  }
+
+  addPlayer(ws, name, color, catchphrase) {
+    if (this.getRealPlayerCount() >= config.MAX_PLAYERS) {
+      return null;
+    }
+
+    const player = new Player(name, color, ws, catchphrase);
     this.spawnAtRandom(player);
     this.players.set(player.id, player);
+
+    // Displace a bot if we exceed MIN_ENTITIES
+    if (this.bots.length > 0 && this.players.size > config.MIN_ENTITIES) {
+      this.displaceBot();
+    }
 
     // Send welcome
     this.sendTo(ws, {
@@ -75,13 +102,60 @@ class Game {
       mw: this.mapWidth,
       mh: this.mapHeight,
       obs: this.obstacles.map(o => o.serialize()),
+      inst: this.instanceId,
     });
 
     return player;
   }
 
   removePlayer(playerId) {
+    const player = this.players.get(playerId);
+    if (!player) return;
+
     this.players.delete(playerId);
+
+    // If it was a bot, also remove from bots array
+    if (player.isBot) {
+      const idx = this.bots.findIndex(b => b.player.id === playerId);
+      if (idx !== -1) this.bots.splice(idx, 1);
+    }
+
+    // Backfill bots to maintain MIN_ENTITIES
+    while (this.players.size < config.MIN_ENTITIES) {
+      this.addBot();
+    }
+  }
+
+  getRealPlayerCount() {
+    let count = 0;
+    for (const [, p] of this.players) {
+      if (!p.isBot) count++;
+    }
+    return count;
+  }
+
+  addBot() {
+    const bot = new Bot();
+    this.spawnAtRandom(bot.player);
+    this.players.set(bot.player.id, bot.player);
+    this.bots.push(bot);
+    return bot;
+  }
+
+  displaceBot() {
+    let lowestIdx = -1;
+    let lowestScore = Infinity;
+    for (let i = 0; i < this.bots.length; i++) {
+      if (this.bots[i].player.score < lowestScore) {
+        lowestScore = this.bots[i].player.score;
+        lowestIdx = i;
+      }
+    }
+    if (lowestIdx !== -1) {
+      const bot = this.bots[lowestIdx];
+      this.players.delete(bot.player.id);
+      this.bots.splice(lowestIdx, 1);
+    }
   }
 
   handleInput(playerId, input) {
@@ -365,6 +439,7 @@ class Game {
         if (other.type === 'food') {
           player.score += other.value;
           player.updateStats();
+          player.boostFuel = Math.min(config.BOOST_FUEL_MAX, player.boostFuel + other.value * 0.15);
           this.removeFood(other);
         } else if (other.type === 'player' && other.alive && other.id !== player.id) {
           // Avoid double-processing
@@ -428,20 +503,26 @@ class Game {
 
     // Notify victim
     if (victim.ws) {
-      this.sendTo(victim.ws, {
+      const deathMsg = {
         t: MSG.DEATH,
         killerName: killer ? killer.name : null,
         score: victim.score,
         kills: victim.kills,
-      });
+      };
+      if (killer && killer.catchphrase) deathMsg.catchphrase = killer.catchphrase;
+      this.sendTo(victim.ws, deathMsg);
     }
 
     // Broadcast kill feed
-    this.broadcast({
+    const killMsg = {
       t: MSG.KILL_FEED,
       killer: killer ? killer.name : '???',
       victim: victim.name,
-    });
+      x: Math.round(victim.x),
+      y: Math.round(victim.y),
+    };
+    if (killer && killer.catchphrase) killMsg.catchphrase = killer.catchphrase;
+    this.broadcast(killMsg);
 
     // Scatter some food at death location
     const foodCount = Math.min(15, Math.floor(victim.score / 50) + 2);
@@ -535,10 +616,7 @@ class Game {
 
   spawnBots() {
     for (let i = 0; i < config.BOT_COUNT; i++) {
-      const bot = new Bot();
-      this.spawnAtRandom(bot.player);
-      this.players.set(bot.player.id, bot.player);
-      this.bots.push(bot);
+      this.addBot();
     }
   }
 

@@ -3,8 +3,9 @@ const config = {
   TICK_RATE: 30,
   MAP_WIDTH: 10000,
   MAP_HEIGHT: 10000,
-  MAX_PLAYERS: 30,
-  BOT_COUNT: 20,
+  MAX_PLAYERS: 50,
+  MIN_ENTITIES: 30,
+  BOT_COUNT: 30,
 
   // Food
   FOOD_TARGET_COUNT: 500,
@@ -175,7 +176,7 @@ const config = {
     return Math.min(raw, config.MAP_WIDTH * 0.05);
   },
   speedFromRadius(radius) {
-    return 5.5 * Math.pow(20 / radius, 0.2);
+    return 5.5 * Math.pow(20 / radius, 0.12);
   },
   healthFromRadius(radius) {
     return 150 * (radius / 20);
