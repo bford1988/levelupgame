@@ -50,8 +50,9 @@ class Input {
     // Prevent right-click context menu
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    // Mobile: touch events
+    // Mobile: touch events + prevent all browser gesture handling
     if (this.isMobile) {
+      canvas.style.touchAction = 'none';
       canvas.addEventListener('touchstart', (e) => this._onTouchStart(e), { passive: false });
       canvas.addEventListener('touchmove', (e) => this._onTouchMove(e), { passive: false });
       canvas.addEventListener('touchend', (e) => this._onTouchEnd(e), { passive: false });
@@ -61,7 +62,7 @@ class Input {
 
   // Boost button position (bottom-right)
   _getBoostPos() {
-    return { x: this.canvas.width - 80, y: this.canvas.height - 100 };
+    return { x: this.canvas.width - 80, y: this.canvas.height - 80 };
   }
 
   _isInBoostZone(clientX, clientY) {
@@ -74,8 +75,11 @@ class Input {
   _onTouchStart(e) {
     e.preventDefault();
     const halfW = this.canvas.width / 2;
+    const touches = e.changedTouches;
 
-    for (const touch of e.changedTouches) {
+    for (let i = 0; i < touches.length; i++) {
+      const touch = touches[i];
+
       // Check boost button first
       if (this.boostTouch === null && this._isInBoostZone(touch.clientX, touch.clientY)) {
         this.boostTouch = touch.identifier;
@@ -102,8 +106,11 @@ class Input {
 
   _onTouchMove(e) {
     e.preventDefault();
+    const touches = e.changedTouches;
 
-    for (const touch of e.changedTouches) {
+    for (let i = 0; i < touches.length; i++) {
+      const touch = touches[i];
+
       if (touch.identifier === this.moveTouch) {
         const dx = touch.clientX - this.moveOriginX;
         const dy = touch.clientY - this.moveOriginY;
@@ -122,14 +129,16 @@ class Input {
         this.aimScreenX = touch.clientX;
         this.aimScreenY = touch.clientY;
       }
-      // boostTouch doesn't need move handling
     }
   }
 
   _onTouchEnd(e) {
     e.preventDefault();
+    const touches = e.changedTouches;
 
-    for (const touch of e.changedTouches) {
+    for (let i = 0; i < touches.length; i++) {
+      const touch = touches[i];
+
       if (touch.identifier === this.moveTouch) {
         this.moveTouch = null;
         this.moveDx = 0;

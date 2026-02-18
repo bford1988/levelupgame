@@ -154,7 +154,7 @@ class HUD {
     const size = isMob ? 100 : 160;
     const padding = 10;
     const x = canvas.width - size - padding;
-    const y = canvas.height - size - padding - (isMob ? 60 : 0);
+    const y = canvas.height - size - padding;
     const scaleX = size / mapWidth;
     const scaleY = size / mapHeight;
 
@@ -255,11 +255,12 @@ class HUD {
     let progress = (score - currentThreshold) / (nextThreshold - currentThreshold);
     progress = Math.max(0, Math.min(1, progress));
 
-    const bottomOffset = isMob ? 140 : 0;
-    const barW = isMob ? 200 : 300;
-    const barH = isMob ? 14 : 18;
-    const barX = canvas.width / 2 - barW / 2;
-    const barY = canvas.height - 110 - bottomOffset;
+    const barW = isMob ? 160 : 300;
+    const barH = isMob ? 12 : 18;
+
+    // Mobile: lower-left corner; Desktop: bottom center
+    const barX = isMob ? 12 : (canvas.width / 2 - barW / 2);
+    const barY = isMob ? (canvas.height - 56) : (canvas.height - 110);
 
     // Background
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -288,81 +289,112 @@ class HUD {
     ctx.strokeRect(barX, barY, barW, barH);
 
     // Label
-    const labelFont = isMob ? 12 : 15;
+    const labelFont = isMob ? 11 : 15;
     ctx.font = `${labelFont}px "Segoe UI", Arial, sans-serif`;
-    ctx.textAlign = 'center';
+    ctx.textAlign = isMob ? 'left' : 'center';
     ctx.fillStyle = nearLevelUp ? '#ffab00' : '#8899aa';
     const tierName = this.tierNames[tier] || `Tier ${tier}`;
     const nextName = this.tierNames[tier + 1] || `Tier ${tier + 1}`;
-    ctx.fillText(`${tierName}  \u2192  ${nextName}`, canvas.width / 2, barY - 6);
+    const labelX = isMob ? barX : canvas.width / 2;
+    ctx.fillText(`${tierName}  \u2192  ${nextName}`, labelX, barY - 5);
 
     // Percentage
-    const pctFont = isMob ? 11 : 13;
+    const pctFont = isMob ? 10 : 13;
     ctx.font = `${pctFont}px "Segoe UI", Arial, sans-serif`;
     ctx.fillStyle = '#ccc';
-    ctx.fillText(`${Math.floor(progress * 100)}%`, canvas.width / 2, barY + barH - 2);
+    ctx.textAlign = isMob ? 'right' : 'center';
+    const pctX = isMob ? (barX + barW) : canvas.width / 2;
+    ctx.fillText(`${Math.floor(progress * 100)}%`, pctX, barY + barH - 1);
+    ctx.textAlign = 'left';
   }
 
   drawScore(ctx, me, canvas, isMob) {
     if (!me) return;
 
     const tier = me.ti || 1;
-    const bottomOffset = isMob ? 140 : 0;
-    const scoreFont = isMob ? 22 : 28;
-    const tierFont = isMob ? 16 : 20;
+    const scoreFont = isMob ? 18 : 28;
+    const tierFont = isMob ? 14 : 20;
 
-    ctx.textAlign = 'center';
+    if (isMob) {
+      // Mobile: lower-left, above tier progress bar
+      const baseX = 12;
+      const baseY = canvas.height - 72;
 
-    // Score with flash effect
-    ctx.font = `bold ${scoreFont}px "Segoe UI", Arial, sans-serif`;
-    if (this.scoreFlash > 0) {
-      const flash = this.scoreFlash;
-      ctx.save();
-      ctx.shadowColor = '#00e5ff';
-      ctx.shadowBlur = 15 * flash;
-      ctx.fillStyle = `rgb(${Math.round(255)}, ${Math.round(255)}, ${Math.round(255)})`;
-      ctx.fillText(`Score: ${(me.s || 0).toLocaleString()}`, canvas.width / 2, canvas.height - 62 - bottomOffset);
-      ctx.restore();
-      this.scoreFlash = Math.max(0, this.scoreFlash - 0.03);
+      ctx.textAlign = 'left';
+
+      // Score
+      ctx.font = `bold ${scoreFont}px "Segoe UI", Arial, sans-serif`;
+      if (this.scoreFlash > 0) {
+        ctx.save();
+        ctx.shadowColor = '#00e5ff';
+        ctx.shadowBlur = 15 * this.scoreFlash;
+        ctx.fillStyle = '#fff';
+        ctx.fillText(`${(me.s || 0).toLocaleString()}`, baseX, baseY);
+        ctx.restore();
+        this.scoreFlash = Math.max(0, this.scoreFlash - 0.03);
+      } else {
+        ctx.fillStyle = '#fff';
+        ctx.fillText(`${(me.s || 0).toLocaleString()}`, baseX, baseY);
+      }
+
+      // Tier + kills on same line
+      ctx.font = `${tierFont}px "Segoe UI", Arial, sans-serif`;
+      ctx.fillStyle = '#aaa';
+      ctx.fillText(`${this.tierNames[tier]} | K: ${me.k || 0}`, baseX, baseY + 18);
     } else {
-      ctx.fillStyle = '#fff';
-      ctx.fillText(`Score: ${(me.s || 0).toLocaleString()}`, canvas.width / 2, canvas.height - 62 - bottomOffset);
-    }
+      // Desktop: bottom center
+      ctx.textAlign = 'center';
 
-    // Tier + kills
-    ctx.font = `${tierFont}px "Segoe UI", Arial, sans-serif`;
-    ctx.fillStyle = '#aaa';
-    ctx.fillText(`${this.tierNames[tier]} | Kills: ${me.k || 0}`, canvas.width / 2, canvas.height - 38 - bottomOffset);
+      ctx.font = `bold ${scoreFont}px "Segoe UI", Arial, sans-serif`;
+      if (this.scoreFlash > 0) {
+        ctx.save();
+        ctx.shadowColor = '#00e5ff';
+        ctx.shadowBlur = 15 * this.scoreFlash;
+        ctx.fillStyle = '#fff';
+        ctx.fillText(`Score: ${(me.s || 0).toLocaleString()}`, canvas.width / 2, canvas.height - 62);
+        ctx.restore();
+        this.scoreFlash = Math.max(0, this.scoreFlash - 0.03);
+      } else {
+        ctx.fillStyle = '#fff';
+        ctx.fillText(`Score: ${(me.s || 0).toLocaleString()}`, canvas.width / 2, canvas.height - 62);
+      }
+
+      // Tier + kills
+      ctx.font = `${tierFont}px "Segoe UI", Arial, sans-serif`;
+      ctx.fillStyle = '#aaa';
+      ctx.fillText(`${this.tierNames[tier]} | Kills: ${me.k || 0}`, canvas.width / 2, canvas.height - 38);
+    }
 
     // Boost fuel gauge
     const fuelMax = me.bfm || 180;
     const fuel = me.bf != null ? me.bf : fuelMax;
     const fuelRatio = fuel / fuelMax;
     const isBoosting = me.boosting;
-    const barW = isMob ? 120 : 160;
-    const barH = 10;
-    const barX = canvas.width / 2 - barW / 2;
-    const barY = canvas.height - 20 - bottomOffset;
+    const barW = isMob ? 100 : 160;
+    const barH = isMob ? 8 : 10;
+
+    // Mobile: lower-left; Desktop: bottom center
+    const barX = isMob ? 12 : (canvas.width / 2 - barW / 2);
+    const barY = isMob ? (canvas.height - 10) : (canvas.height - 20);
 
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
     ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
 
-    // Empty bar
     ctx.fillStyle = '#1a1a2e';
     ctx.fillRect(barX, barY, barW, barH);
 
-    // Fuel fill
     const fuelColor = fuelRatio < 0.2 ? '#ff4444' : (isBoosting ? '#00ffcc' : '#00e5ff');
     ctx.fillStyle = fuelColor;
     ctx.fillRect(barX, barY, barW * fuelRatio, barH);
 
-    const labelFont = isMob ? 12 : 14;
-    ctx.font = `${labelFont}px "Segoe UI", Arial, sans-serif`;
-    ctx.fillStyle = isBoosting ? '#00ffcc' : (fuelRatio > 0.99 ? '#00e5ff' : '#667');
-    const label = isMob
-      ? (isBoosting ? 'BOOSTING' : 'BOOST')
-      : (isBoosting ? 'BOOSTING' : (fuelRatio > 0.99 ? 'BOOST [Hold Click]' : 'BOOST'));
-    ctx.fillText(label, canvas.width / 2, barY - 4);
+    // Boost label — only on desktop (mobile has the button)
+    if (!isMob) {
+      ctx.font = '14px "Segoe UI", Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = isBoosting ? '#00ffcc' : (fuelRatio > 0.99 ? '#00e5ff' : '#667');
+      const label = isBoosting ? 'BOOSTING' : (fuelRatio > 0.99 ? 'BOOST [Hold Click]' : 'BOOST');
+      ctx.fillText(label, canvas.width / 2, barY - 4);
+    }
   }
 
   drawTierUpNotification(ctx, canvas) {
@@ -506,12 +538,6 @@ class HUD {
       ctx.strokeStyle = 'rgba(255,255,255,0.2)';
       ctx.lineWidth = 2;
       ctx.stroke();
-
-      // Inner dead zone
-      ctx.beginPath();
-      ctx.arc(ox, oy, 10, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.05)';
-      ctx.fill();
 
       // Thumb position
       const thumbX = ox + input.moveDx * jr;

@@ -53,12 +53,9 @@ function startGame() {
     canvas.height = window.innerHeight;
   });
 
-  // Mobile: prevent touch defaults on canvas and request fullscreen
+  // Mobile: request fullscreen and landscape
   if (isMobile) {
-    canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
-    canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
-    canvas.addEventListener('touchend', (e) => e.preventDefault(), { passive: false });
-    canvas.addEventListener('touchcancel', (e) => e.preventDefault(), { passive: false });
+    canvas.style.touchAction = 'none';
 
     if (document.documentElement.requestFullscreen) {
       document.documentElement.requestFullscreen().catch(() => {});
