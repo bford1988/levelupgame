@@ -70,7 +70,7 @@ function startGame() {
 
   // Initialize systems
   camera = new Camera(canvas);
-  if (isMobile) camera._mobileZoomFactor = 0.85;
+  if (isMobile) camera._mobileZoomFactor = 0.65;
   input = new Input(canvas);
   renderer = new Renderer(canvas);
   network = new Network();
