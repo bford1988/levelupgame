@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Barrage Admin</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a14;
+      color: #c8c8d8;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      overflow: hidden;
+      height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 20px;
+      background: #12121e;
+      border-bottom: 1px solid #2a2a3e;
+      height: 48px;
+    }
+    .header h1 {
+      font-size: 18px;
+      color: #00e5ff;
+      letter-spacing: 2px;
+    }
+    .header-stats {
+      display: flex;
+      gap: 20px;
+      font-size: 13px;
+      color: #888;
+    }
+    .header-stats span { color: #00e5ff; }
+
+    /* Layout */
+    .main {
+      display: flex;
+      height: calc(100vh - 48px);
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 280px;
+      min-width: 280px;
+      background: #0f0f1a;
+      border-right: 1px solid #2a2a3e;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .sidebar::-webkit-scrollbar { width: 6px; }
+    .sidebar::-webkit-scrollbar-thumb { background: #2a2a3e; border-radius: 3px; }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #666;
+      margin-bottom: 6px;
+    }
+
+    /* Instance cards */
+    .instance-card {
+      background: #161626;
+      border: 1px solid #2a2a3e;
+      border-radius: 6px;
+      padding: 10px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .instance-card:hover { border-color: #00e5ff44; }
+    .instance-card.active { border-color: #00e5ff; }
+    .instance-id {
+      font-family: 'Consolas', monospace;
+      font-size: 12px;
+      color: #888;
+    }
+    .instance-players {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .player-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 12px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: #1a1a2e;
+    }
+    .player-badge.real { color: #4caf50; }
+    .player-badge.bot { color: #ff9800; }
+
+    /* Health bar */
+    .instance-health {
+      height: 4px;
+      background: #1a1a2e;
+      border-radius: 2px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+    .instance-health-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.3s, background 0.3s;
+    }
+
+    .view-btn {
+      display: inline-block;
+      margin-top: 6px;
+      font-size: 11px;
+      padding: 3px 10px;
+      border: 1px solid #00e5ff44;
+      border-radius: 3px;
+      background: transparent;
+      color: #00e5ff;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .view-btn:hover { background: #00e5ff22; }
+
+    /* Totals panel */
+    .totals {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .total-box {
+      background: #161626;
+      border: 1px solid #2a2a3e;
+      border-radius: 4px;
+      padding: 8px;
+      text-align: center;
+    }
+    .total-box .value {
+      font-size: 22px;
+      font-weight: 700;
+      color: #00e5ff;
+    }
+    .total-box .label {
+      font-size: 10px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* Sparkline */
+    .sparkline-container {
+      background: #161626;
+      border: 1px solid #2a2a3e;
+      border-radius: 4px;
+      padding: 8px;
+    }
+    #sparkline {
+      width: 100%;
+      height: 40px;
+    }
+
+    /* Score distribution */
+    .score-dist {
+      background: #161626;
+      border: 1px solid #2a2a3e;
+      border-radius: 4px;
+      padding: 8px;
+    }
+    .dist-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 3px;
+      font-size: 11px;
+    }
+    .dist-label {
+      width: 50px;
+      text-align: right;
+      color: #888;
+      flex-shrink: 0;
+    }
+    .dist-bar-bg {
+      flex: 1;
+      height: 10px;
+      background: #1a1a2e;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .dist-bar {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.3s;
+    }
+    .dist-count {
+      width: 24px;
+      font-size: 10px;
+      color: #666;
+    }
+
+    /* Content area */
+    .content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Spectator canvas */
+    .spectator-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 300px;
+      background: #0e0e1a;
+      border-bottom: 1px solid #2a2a3e;
+    }
+    .spectator-wrap canvas {
+      width: 100%;
+      height: 100%;
+    }
+    .spectator-label {
+      position: absolute;
+      top: 8px;
+      left: 12px;
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      pointer-events: none;
+    }
+    .spectator-controls {
+      position: absolute;
+      bottom: 8px;
+      left: 12px;
+      font-size: 10px;
+      color: #555;
+      pointer-events: none;
+    }
+    .spectator-no-instance {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #444;
+      font-size: 14px;
+      pointer-events: none;
+    }
+
+    /* Bottom panels */
+    .bottom-panels {
+      display: flex;
+      height: 260px;
+      min-height: 200px;
+      border-top: 1px solid #2a2a3e;
+    }
+
+    /* Player table */
+    .player-table-wrap {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+      border-right: 1px solid #2a2a3e;
+    }
+    .player-table-wrap::-webkit-scrollbar { width: 6px; }
+    .player-table-wrap::-webkit-scrollbar-thumb { background: #2a2a3e; border-radius: 3px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    th {
+      text-align: left;
+      padding: 4px 8px;
+      border-bottom: 1px solid #2a2a3e;
+      color: #666;
+      font-weight: 600;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      position: sticky;
+      top: 0;
+      background: #0a0a14;
+    }
+    td {
+      padding: 3px 8px;
+      border-bottom: 1px solid #1a1a2e;
+    }
+    tr.dead td { opacity: 0.35; }
+    tr.bot td { color: #ff980088; }
+    tr.player-row { cursor: pointer; }
+    tr.player-row:hover td { background: #1a1a2e; }
+    .color-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+
+    /* Event log */
+    .event-log-wrap {
+      width: 360px;
+      min-width: 300px;
+      overflow-y: auto;
+      padding: 8px;
+      font-family: 'Consolas', monospace;
+      font-size: 11px;
+    }
+    .event-log-wrap::-webkit-scrollbar { width: 6px; }
+    .event-log-wrap::-webkit-scrollbar-thumb { background: #2a2a3e; border-radius: 3px; }
+
+    .log-entry {
+      padding: 2px 0;
+      border-bottom: 1px solid #1a1a2e08;
+    }
+    .log-time { color: #555; }
+    .log-type {
+      display: inline-block;
+      padding: 0 4px;
+      border-radius: 2px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .log-type.instance_create { background: #1b5e20; color: #4caf50; }
+    .log-type.instance_destroy { background: #b71c1c33; color: #ef5350; }
+    .log-type.player_join { background: #0d47a133; color: #42a5f5; }
+    .log-type.player_leave { background: #4a148c33; color: #ab47bc; }
+    .log-type.info { background: #33333366; color: #999; }
+    .log-msg { color: #aaa; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>BARRAGE ADMIN</h1>
+    <div class="header-stats">
+      Uptime: <span id="uptime">0s</span>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="sidebar">
+      <div>
+        <div class="section-title">Instances</div>
+        <div id="instance-list"></div>
+      </div>
+
+      <div>
+        <div class="section-title">Totals</div>
+        <div class="totals">
+          <div class="total-box">
+            <div class="value" id="total-players">0</div>
+            <div class="label">Players</div>
+          </div>
+          <div class="total-box">
+            <div class="value" id="total-bots">0</div>
+            <div class="label">Bots</div>
+          </div>
+          <div class="total-box">
+            <div class="value" id="total-instances">0</div>
+            <div class="label">Instances</div>
+          </div>
+          <div class="total-box">
+            <div class="value" id="total-entities">0</div>
+            <div class="label">Entities</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-title">Player Count (5min)</div>
+        <div class="sparkline-container">
+          <canvas id="sparkline"></canvas>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-title">Score Distribution</div>
+        <div class="score-dist" id="score-dist"></div>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="spectator-wrap" id="spectator-wrap">
+        <canvas id="spectator-canvas"></canvas>
+        <div class="spectator-label" id="spectator-label">Spectator View</div>
+        <div class="spectator-controls">Click+drag to pan | Scroll to zoom | Click player in table to follow</div>
+        <div class="spectator-no-instance" id="no-instance-msg">Click VIEW on an instance to spectate</div>
+      </div>
+
+      <div class="bottom-panels">
+        <div class="player-table-wrap">
+          <div class="section-title" style="padding: 4px 0;">Players</div>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Score</th>
+                <th>Kills</th>
+                <th>Tier</th>
+                <th>Type</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="player-tbody"></tbody>
+          </table>
+        </div>
+        <div class="event-log-wrap">
+          <div class="section-title" style="padding: 4px 0;">Event Log</div>
+          <div id="event-log"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reuse game rendering scripts -->
+  <script src="/shared/constants.js"></script>
+  <script src="/js/Camera.js"></script>
+  <script src="/js/TankRenderer.js"></script>
+  <script src="/js/Renderer.js"></script>
+  <script src="/js/ParticleSystem.js"></script>
+  <script src="/js/Interpolation.js"></script>
+
+  <script>
+    // --- State ---
+    let stats = null;
+    let activeInstanceId = null;
+    let spectatorWs = null;
+    let spectatorCanvas, spectatorCtx;
+    let spectatorCamera, spectatorRenderer, spectatorInterp, spectatorParticles;
+    let spectatorObstacles = [];
+    let spectatorMapW = 10000, spectatorMapH = 10000;
+    let spectatorConnected = false;
+    let followPlayerId = null;
+
+    // Spectator pan/zoom
+    let isDragging = false;
+    let dragStartX = 0, dragStartY = 0;
+    let manualPan = false;
+
+    // --- Init ---
+    function init() {
+      spectatorCanvas = document.getElementById('spectator-canvas');
+      resizeSpectatorCanvas();
+      window.addEventListener('resize', resizeSpectatorCanvas);
+
+      // Set up spectator camera and renderer
+      spectatorCamera = new Camera(spectatorCanvas);
+      spectatorCamera.zoom = 0.15;
+      spectatorCamera.targetZoom = 0.15;
+      spectatorRenderer = new Renderer(spectatorCanvas);
+      spectatorInterp = new Interpolation();
+      spectatorParticles = new ParticleSystem();
+
+      // Mouse controls for spectator
+      setupSpectatorControls();
+
+      // Start polling
+      fetchStats();
+      fetchLog();
+      setInterval(fetchStats, 2000);
+      setInterval(fetchLog, 3000);
+
+      // Draw initial empty canvas (no render loop until spectating)
+      clearSpectatorCanvas();
+    }
+
+    function resizeSpectatorCanvas() {
+      const wrap = document.getElementById('spectator-wrap');
+      spectatorCanvas = document.getElementById('spectator-canvas');
+      spectatorCanvas.width = wrap.clientWidth;
+      spectatorCanvas.height = wrap.clientHeight;
+      if (spectatorRenderer) {
+        spectatorRenderer.canvas = spectatorCanvas;
+        spectatorRenderer.ctx = spectatorCanvas.getContext('2d');
+      }
+      if (spectatorCamera) {
+        spectatorCamera.canvas = spectatorCanvas;
+      }
+    }
+
+    // --- Spectator controls ---
+    function setupSpectatorControls() {
+      spectatorCanvas.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        manualPan = true;
+        followPlayerId = null;
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - dragStartX;
+        const dy = e.clientY - dragStartY;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        spectatorCamera.x -= dx / spectatorCamera.zoom;
+        spectatorCamera.y -= dy / spectatorCamera.zoom;
+        spectatorCamera.targetX = spectatorCamera.x;
+        spectatorCamera.targetY = spectatorCamera.y;
+      });
+      window.addEventListener('mouseup', () => {
+        isDragging = false;
+      });
+      spectatorCanvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const factor = e.deltaY > 0 ? 0.9 : 1.1;
+        spectatorCamera.targetZoom = Math.max(0.03, Math.min(1.5, spectatorCamera.targetZoom * factor));
+        manualPan = true;
+        followPlayerId = null;
+      });
+    }
+
+    // --- Spectator WebSocket ---
+    let spectatorRafId = null;
+
+    function connectSpectator(instanceId) {
+      if (spectatorWs) {
+        spectatorWs.close();
+        spectatorWs = null;
+      }
+      spectatorConnected = false;
+      spectatorInterp = new Interpolation();
+
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${proto}//${location.host}/?spectate=${instanceId}`;
+      spectatorWs = new WebSocket(wsUrl);
+
+      spectatorWs.onmessage = (evt) => {
+        const msg = JSON.parse(evt.data);
+        if (msg.t === MSG.WELCOME) {
+          spectatorMapW = msg.mw;
+          spectatorMapH = msg.mh;
+          spectatorObstacles = msg.obs || [];
+          spectatorConnected = true;
+          // Center camera on map
+          if (!manualPan) {
+            spectatorCamera.x = spectatorMapW / 2;
+            spectatorCamera.y = spectatorMapH / 2;
+            spectatorCamera.targetX = spectatorMapW / 2;
+            spectatorCamera.targetY = spectatorMapH / 2;
+            spectatorCamera.targetZoom = 0.12;
+          }
+          document.getElementById('no-instance-msg').style.display = 'none';
+          document.getElementById('spectator-label').textContent = `Spectating: ${instanceId}`;
+          // Start render loop only when connected
+          startSpectatorLoop();
+        } else if (msg.t === MSG.STATE) {
+          spectatorInterp.pushState(msg);
+        }
+      };
+
+      spectatorWs.onerror = (err) => {
+        console.error('Spectator WS error:', err);
+      };
+
+      spectatorWs.onclose = (evt) => {
+        spectatorConnected = false;
+        stopSpectatorLoop();
+        clearSpectatorCanvas();
+        console.log('Spectator WS closed:', evt.code, evt.reason);
+      };
+    }
+
+    // --- Spectator render loop (only runs when spectating) ---
+    let lastSpecTime = 0;
+
+    function startSpectatorLoop() {
+      if (spectatorRafId) return; // already running
+      lastSpecTime = performance.now();
+      spectatorRafId = requestAnimationFrame(spectatorLoop);
+    }
+
+    function stopSpectatorLoop() {
+      if (spectatorRafId) {
+        cancelAnimationFrame(spectatorRafId);
+        spectatorRafId = null;
+      }
+    }
+
+    function clearSpectatorCanvas() {
+      const ctx = spectatorCanvas.getContext('2d');
+      ctx.fillStyle = '#0e0e1a';
+      ctx.fillRect(0, 0, spectatorCanvas.width, spectatorCanvas.height);
+    }
+
+    function spectatorLoop(ts) {
+      if (!spectatorConnected) {
+        spectatorRafId = null;
+        clearSpectatorCanvas();
+        return;
+      }
+
+      const dt = (ts - lastSpecTime) / 1000;
+      lastSpecTime = ts;
+
+      const state = spectatorInterp.getInterpolatedState();
+      if (state && state.p) {
+        // Follow a specific player if set
+        if (followPlayerId) {
+          const target = state.p.find(p => p.i === followPlayerId);
+          if (target && target.al) {
+            spectatorCamera.targetX = target.x;
+            spectatorCamera.targetY = target.y;
+          }
+        }
+
+        spectatorCamera.update();
+        spectatorParticles.update(dt);
+        spectatorRenderer.tankRenderer.update(dt);
+
+        const stateWithObs = { ...state, obs: spectatorObstacles };
+        spectatorRenderer.render(stateWithObs, spectatorCamera, null, spectatorMapW, spectatorMapH);
+        spectatorParticles.draw(spectatorRenderer.ctx, spectatorCamera);
+
+        // Draw minimap overlay
+        drawMinimap(spectatorRenderer.ctx, state.p);
+      }
+
+      spectatorRafId = requestAnimationFrame(spectatorLoop);
+    }
+
+    // --- Minimap ---
+    function drawMinimap(ctx, players) {
+      if (!players) return;
+      const mmW = 140, mmH = 140;
+      const mmX = spectatorCanvas.width - mmW - 10;
+      const mmY = 10;
+
+      ctx.fillStyle = 'rgba(10, 10, 20, 0.7)';
+      ctx.fillRect(mmX, mmY, mmW, mmH);
+      ctx.strokeStyle = '#2a2a3e';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(mmX, mmY, mmW, mmH);
+
+      const scaleX = mmW / spectatorMapW;
+      const scaleY = mmH / spectatorMapH;
+
+      for (const p of players) {
+        if (!p.al) continue;
+        const px = mmX + p.x * scaleX;
+        const py = mmY + p.y * scaleY;
+        const r = Math.max(1.5, Math.min(4, p.r * scaleX * 2));
+        ctx.beginPath();
+        ctx.arc(px, py, r, 0, Math.PI * 2);
+        ctx.fillStyle = p.c || '#fff';
+        ctx.fill();
+      }
+
+      // Camera viewport indicator
+      const vp = spectatorCamera.getViewport();
+      const vpX = mmX + Math.max(0, vp.left) * scaleX;
+      const vpY = mmY + Math.max(0, vp.top) * scaleY;
+      const vpW = Math.min(spectatorMapW, vp.right - Math.max(0, vp.left)) * scaleX;
+      const vpH = Math.min(spectatorMapH, vp.bottom - Math.max(0, vp.top)) * scaleY;
+      ctx.strokeStyle = '#00e5ff44';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(vpX, vpY, vpW, vpH);
+    }
+
+    // --- API Polling ---
+    async function fetchStats() {
+      try {
+        const res = await fetch('/adminford/api/stats');
+        if (!res.ok) return;
+        stats = await res.json();
+        renderStats();
+      } catch (e) {}
+    }
+
+    async function fetchLog() {
+      try {
+        const res = await fetch('/adminford/api/log');
+        if (!res.ok) return;
+        const entries = await res.json();
+        renderLog(entries);
+      } catch (e) {}
+    }
+
+    // --- Render UI ---
+    function formatUptime(s) {
+      const h = Math.floor(s / 3600);
+      const m = Math.floor((s % 3600) / 60);
+      const sec = s % 60;
+      if (h > 0) return `${h}h ${m}m`;
+      if (m > 0) return `${m}m ${sec}s`;
+      return `${sec}s`;
+    }
+
+    function formatScore(n) {
+      if (n >= 10000) return (n / 1000).toFixed(1) + 'K';
+      return n.toString();
+    }
+
+    function renderStats() {
+      if (!stats) return;
+
+      // Header
+      document.getElementById('uptime').textContent = formatUptime(stats.uptime);
+
+      // Totals
+      document.getElementById('total-players').textContent = stats.totalRealPlayers;
+      document.getElementById('total-bots').textContent = stats.totalBots;
+      document.getElementById('total-instances').textContent = stats.totalInstances;
+      let totalEntities = 0;
+      stats.instances.forEach(i => totalEntities += i.totalEntities);
+      document.getElementById('total-entities').textContent = totalEntities;
+
+      // Instance cards
+      const list = document.getElementById('instance-list');
+      list.innerHTML = '';
+      for (const inst of stats.instances) {
+        const card = document.createElement('div');
+        card.className = 'instance-card' + (inst.id === activeInstanceId ? ' active' : '');
+
+        const healthPct = (inst.totalEntities / 50) * 100;
+        const healthColor = healthPct < 50 ? '#4caf50' : (healthPct < 80 ? '#ff9800' : '#f44336');
+
+        card.innerHTML = `
+          <div class="instance-id">${inst.id}</div>
+          <div class="instance-players">
+            <span class="player-badge real">&#9679; ${inst.realPlayers} real</span>
+            <span class="player-badge bot">&#9679; ${inst.bots} bots</span>
+          </div>
+          <div class="instance-health">
+            <div class="instance-health-fill" style="width:${healthPct}%;background:${healthColor}"></div>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;margin-top:6px">
+            <button class="view-btn" data-id="${inst.id}">VIEW</button>
+            <span style="font-size:10px;color:#555">tick ${inst.tick}</span>
+          </div>
+        `;
+        list.appendChild(card);
+      }
+
+      // View buttons
+      list.querySelectorAll('.view-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id;
+          activeInstanceId = id;
+          manualPan = false;
+          followPlayerId = null;
+          connectSpectator(id);
+          // Update active state on cards
+          list.querySelectorAll('.instance-card').forEach(c => {
+            c.classList.toggle('active', c.querySelector('.view-btn').dataset.id === id);
+          });
+          renderPlayerTable();
+        });
+      });
+
+      // Player table (from active instance or all)
+      renderPlayerTable();
+
+      // Score distribution
+      renderScoreDist();
+
+      // Sparkline
+      renderSparkline();
+    }
+
+    function renderPlayerTable() {
+      const tbody = document.getElementById('player-tbody');
+      tbody.innerHTML = '';
+
+      if (!stats) return;
+
+      // Gather players from active instance, or all instances
+      let players = [];
+      if (activeInstanceId) {
+        const inst = stats.instances.find(i => i.id === activeInstanceId);
+        if (inst) players = inst.allPlayers;
+      } else {
+        for (const inst of stats.instances) {
+          for (const p of inst.allPlayers) {
+            players.push({ ...p, instId: inst.id });
+          }
+        }
+      }
+      players.sort((a, b) => b.score - a.score);
+
+      for (const p of players) {
+        const tr = document.createElement('tr');
+        tr.className = 'player-row';
+        if (!p.alive) tr.classList.add('dead');
+        if (p.isBot) tr.classList.add('bot');
+
+        tr.innerHTML = `
+          <td><span class="color-dot" style="background:${p.color}"></span>${escHtml(p.name)}</td>
+          <td>${formatScore(p.score)}</td>
+          <td>${p.kills}</td>
+          <td>${p.tier}</td>
+          <td>${p.isBot ? 'Bot' : 'Player'}</td>
+          <td>${p.alive ? 'Alive' : 'Dead'}</td>
+        `;
+
+        // Click to follow
+        tr.addEventListener('click', () => {
+          followPlayerId = p.id;
+          manualPan = false;
+          spectatorCamera.targetZoom = 0.5;
+        });
+        tbody.appendChild(tr);
+      }
+    }
+
+    function renderScoreDist() {
+      const container = document.getElementById('score-dist');
+      if (!stats) return;
+
+      const brackets = [
+        { label: '0-100', min: 0, max: 100, color: '#4caf50' },
+        { label: '100-1K', min: 100, max: 1000, color: '#8bc34a' },
+        { label: '1K-5K', min: 1000, max: 5000, color: '#ffeb3b' },
+        { label: '5K-20K', min: 5000, max: 20000, color: '#ff9800' },
+        { label: '20K+', min: 20000, max: Infinity, color: '#f44336' },
+      ];
+
+      // Count all alive players across all instances
+      const counts = brackets.map(() => 0);
+      let maxCount = 1;
+      for (const inst of stats.instances) {
+        for (const p of inst.allPlayers) {
+          if (!p.alive) continue;
+          for (let i = 0; i < brackets.length; i++) {
+            if (p.score >= brackets[i].min && p.score < brackets[i].max) {
+              counts[i]++;
+              break;
+            }
+          }
+        }
+      }
+      maxCount = Math.max(1, ...counts);
+
+      container.innerHTML = '';
+      for (let i = 0; i < brackets.length; i++) {
+        const pct = (counts[i] / maxCount) * 100;
+        container.innerHTML += `
+          <div class="dist-row">
+            <span class="dist-label">${brackets[i].label}</span>
+            <div class="dist-bar-bg">
+              <div class="dist-bar" style="width:${pct}%;background:${brackets[i].color}"></div>
+            </div>
+            <span class="dist-count">${counts[i]}</span>
+          </div>
+        `;
+      }
+    }
+
+    function renderSparkline() {
+      const canvas = document.getElementById('sparkline');
+      const ctx = canvas.getContext('2d');
+      canvas.width = canvas.parentElement.clientWidth - 16;
+      canvas.height = 40;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (!stats || !stats.playerCountHistory || stats.playerCountHistory.length < 2) {
+        ctx.fillStyle = '#333';
+        ctx.font = '10px monospace';
+        ctx.fillText('Collecting data...', 4, 24);
+        return;
+      }
+
+      const data = stats.playerCountHistory;
+      const maxVal = Math.max(1, ...data.map(d => d.count));
+      const w = canvas.width;
+      const h = canvas.height;
+      const step = w / (data.length - 1);
+
+      // Fill
+      ctx.beginPath();
+      ctx.moveTo(0, h);
+      for (let i = 0; i < data.length; i++) {
+        const x = i * step;
+        const y = h - (data[i].count / maxVal) * (h - 4);
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(w, h);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0, 229, 255, 0.1)';
+      ctx.fill();
+
+      // Line
+      ctx.beginPath();
+      for (let i = 0; i < data.length; i++) {
+        const x = i * step;
+        const y = h - (data[i].count / maxVal) * (h - 4);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = '#00e5ff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Current value
+      const last = data[data.length - 1].count;
+      ctx.fillStyle = '#00e5ff';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(last + ' now', w - 2, 10);
+    }
+
+    function renderLog(entries) {
+      const container = document.getElementById('event-log');
+      const wasAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 30;
+
+      container.innerHTML = '';
+      for (const entry of entries) {
+        const time = new Date(entry.time);
+        const ts = time.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const div = document.createElement('div');
+        div.className = 'log-entry';
+        div.innerHTML = `<span class="log-time">${ts}</span> <span class="log-type ${entry.type}">${entry.type}</span> <span class="log-msg">${escHtml(entry.message)}</span>`;
+        container.appendChild(div);
+      }
+
+      // Auto-scroll if was at bottom
+      if (wasAtBottom) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+
+    function escHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    // --- Go ---
+    init();
+  </script>
+</body>
+</html>

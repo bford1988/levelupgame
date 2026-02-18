@@ -19,6 +19,8 @@ class Game {
     this.mines = [];
     this.explosions = []; // temporary, cleared after broadcast
     this.bots = [];
+    this.spectators = []; // admin spectator websockets
+    this.spectatorTickCounter = 0;
     this.spatialHash = new SpatialHash(200);
     this.tick = 0;
     this.loopInterval = null;
@@ -79,6 +81,22 @@ class Game {
     this.players.clear();
     this.bots = [];
     console.log(`Game instance ${this.instanceId || '?'} stopped`);
+  }
+
+  addSpectator(ws) {
+    this.spectators.push(ws);
+    this.sendTo(ws, {
+      t: MSG.WELCOME,
+      id: '__spectator',
+      mw: this.mapWidth,
+      mh: this.mapHeight,
+      obs: this.obstacles.map(o => o.serialize()),
+      inst: this.instanceId,
+    });
+  }
+
+  removeSpectator(ws) {
+    this.spectators = this.spectators.filter(s => s !== ws);
   }
 
   addPlayer(ws, name, color, catchphrase) {
@@ -742,6 +760,48 @@ class Game {
       };
       if (visibleExplosions.length > 0) msg.ex = visibleExplosions;
       this.sendTo(player.ws, msg);
+    }
+
+    // Send state to spectators at 10Hz (every 3rd tick) to avoid lag
+    this.spectatorTickCounter++;
+    if (this.spectators.length > 0 && this.spectatorTickCounter % 3 === 0) {
+      const allPlayers = [];
+      for (const [, p] of this.players) {
+        allPlayers.push(p.serialize());
+      }
+      const allBullets = [];
+      for (const b of this.projectiles) {
+        allBullets.push(b.serialize());
+      }
+      const allMines = [];
+      for (const m of this.mines) {
+        allMines.push(m.serialize());
+      }
+      const allTurrets = [];
+      for (const t of this.turrets) {
+        allTurrets.push({ x: Math.round(t.x), y: Math.round(t.y), a: Math.round(t.angle * 100) / 100 });
+      }
+
+      const specMsg = {
+        t: MSG.STATE,
+        k: this.tick,
+        p: allPlayers,
+        b: allBullets,
+        mn: allMines,
+        tu: allTurrets,
+        lb: top10,
+      };
+      if (this.explosions.length > 0) specMsg.ex = this.explosions;
+      const specStr = JSON.stringify(specMsg);
+
+      for (let i = this.spectators.length - 1; i >= 0; i--) {
+        const ws = this.spectators[i];
+        if (ws.readyState === 1) {
+          ws.send(specStr);
+        } else {
+          this.spectators.splice(i, 1);
+        }
+      }
     }
 
     // Clear one-time events after broadcast

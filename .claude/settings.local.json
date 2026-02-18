@@ -18,7 +18,13 @@
       "Bash(fuser:*)",
       "Bash(node -e:*)",
       "Bash(node -c:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(npx @digitalocean/mcp:*)",
+      "WebFetch(domain:www.digitalocean.com)"
     ]
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "digitalocean"
+  ]
 }

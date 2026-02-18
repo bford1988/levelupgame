@@ -1,5 +1,5 @@
 const config = {
-  PORT: 3000,
+  PORT: parseInt(process.env.PORT, 10) || 3000,
   TICK_RATE: 30,
   MAP_WIDTH: 10000,
   MAP_HEIGHT: 10000,

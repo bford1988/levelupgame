@@ -1,4 +1,5 @@
 const http = require('http');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
@@ -18,6 +19,86 @@ const MIME_TYPES = {
 };
 
 const ROOT = path.join(__dirname, '..');
+
+// Admin auth
+const ADMIN_PASSWORD = 'qvhGVRFsFdxyDpci';
+const ADMIN_SECRET = 'barrage_admin_' + crypto.randomBytes(8).toString('hex');
+
+function makeAdminToken() {
+  return crypto.createHmac('sha256', ADMIN_SECRET).update(ADMIN_PASSWORD).digest('hex').slice(0, 32);
+}
+
+function parseCookies(req) {
+  return (req.headers.cookie || '').split(';').reduce((acc, c) => {
+    const [k, v] = c.trim().split('=');
+    if (k && v) acc[k] = v;
+    return acc;
+  }, {});
+}
+
+function parseUrl(req) {
+  return new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+}
+
+function checkAdminAuth(req) {
+  const cookies = parseCookies(req);
+  if (cookies.admin_token === makeAdminToken()) return true;
+
+  const u = parseUrl(req);
+  if (u.searchParams.get('pw') === ADMIN_PASSWORD) return true;
+
+  return false;
+}
+
+function setAdminCookie(res) {
+  res.setHeader('Set-Cookie', `admin_token=${makeAdminToken()}; Path=/; HttpOnly; SameSite=Strict`);
+}
+
+function handleAdminRequest(req, res, manager) {
+  const u = parseUrl(req);
+  const pathname = u.pathname;
+
+  if (!checkAdminAuth(req)) {
+    res.writeHead(401, { 'Content-Type': 'text/html' });
+    res.end('<h1>401 Unauthorized</h1><p>Invalid or missing password.</p>');
+    return true;
+  }
+
+  // Serve admin page
+  if (pathname === '/adminford' || pathname === '/adminford/') {
+    setAdminCookie(res);
+    const adminPath = path.join(ROOT, 'public', 'admin.html');
+    fs.readFile(adminPath, (err, data) => {
+      if (err) {
+        res.writeHead(500);
+        res.end('Admin page not found');
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(data);
+    });
+    return true;
+  }
+
+  // API: stats
+  if (pathname === '/adminford/api/stats') {
+    const stats = manager.getStats();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(stats));
+    return true;
+  }
+
+  // API: event log
+  if (pathname === '/adminford/api/log') {
+    const count = parseInt(u.searchParams.get('count')) || 100;
+    const entries = manager.eventLog.getRecent(count);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(entries));
+    return true;
+  }
+
+  return false;
+}
 
 function serveStatic(req, res) {
   let filePath;
@@ -44,11 +125,47 @@ function serveStatic(req, res) {
   });
 }
 
-const server = http.createServer(serveStatic);
-const wss = new WebSocketServer({ server });
 const manager = new InstanceManager();
 
-wss.on('connection', (ws) => {
+const server = http.createServer((req, res) => {
+  const u = parseUrl(req);
+
+  // Admin routes
+  if (u.pathname.startsWith('/adminford')) {
+    if (handleAdminRequest(req, res, manager)) return;
+  }
+
+  serveStatic(req, res);
+});
+
+const wss = new WebSocketServer({ server });
+
+wss.on('connection', (ws, req) => {
+  const u = parseUrl(req);
+
+  // Spectator connection
+  if (u.searchParams.get('spectate')) {
+    const cookies = parseCookies(req);
+    if (cookies.admin_token !== makeAdminToken()) {
+      ws.close(4001, 'Unauthorized');
+      return;
+    }
+
+    const instanceId = u.searchParams.get('spectate');
+    const instance = manager.findInstance(instanceId);
+    if (!instance) {
+      ws.close(4004, 'Instance not found');
+      return;
+    }
+
+    instance.addSpectator(ws);
+    ws.on('close', () => {
+      instance.removeSpectator(ws);
+    });
+    return;
+  }
+
+  // Regular player connection
   let player = null;
 
   ws.on('message', (raw) => {
