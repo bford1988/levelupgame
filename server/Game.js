@@ -975,7 +975,12 @@ class Game {
       const visiblePlayers = [];
       for (const [, p] of this.players) {
         if (Math.abs(p.x - player.x) < halfW && Math.abs(p.y - player.y) < halfH) {
-          visiblePlayers.push(p.serialize());
+          if (player.knownPlayers.has(p.id)) {
+            visiblePlayers.push(p.serializeDynamic());
+          } else {
+            visiblePlayers.push(p.serialize());
+            player.knownPlayers.add(p.id);
+          }
         }
       }
 

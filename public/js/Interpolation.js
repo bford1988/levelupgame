@@ -1,13 +1,30 @@
 class Interpolation {
   constructor() {
     this.buffer = [];
-    this.renderDelay = 100; // ms behind server
+    this.renderDelay = 50; // ms behind server (adaptive)
     this.smoothRadius = new Map(); // playerId -> current display radius
+    // Adaptive delay tracking
+    this.lastPushTime = 0;
+    this.jitter = 0; // exponential moving average of jitter
+    this.expectedInterval = 33.3; // 1000 / 30Hz
   }
 
   pushState(serverState) {
+    const now = Date.now();
+    if (this.lastPushTime > 0) {
+      const interval = now - this.lastPushTime;
+      const deviation = Math.abs(interval - this.expectedInterval);
+      this.jitter = this.jitter * 0.9 + deviation * 0.1;
+      // Adaptive render delay: one tick + jitter margin, clamped
+      const target = this.expectedInterval + this.jitter * 2.5;
+      const clamped = Math.max(33, Math.min(200, target));
+      // Smooth toward target to avoid sudden jumps
+      this.renderDelay += (clamped - this.renderDelay) * 0.1;
+    }
+    this.lastPushTime = now;
+
     this.buffer.push({
-      timestamp: Date.now(),
+      timestamp: now,
       state: serverState,
     });
     // Keep last 10 states

@@ -244,26 +244,30 @@ class Renderer {
       ctx.strokeStyle = '#ff4444';
       ctx.stroke();
 
-      // Triangle spikes around the edge
+      // Triangle spikes around the edge (single path, no per-spike save/restore)
       const spikeCount = 8;
       const spikeLen = r * 0.45;
       const spikeBase = r * 0.18;
+      const rp = r * pulse;
       ctx.fillStyle = '#ff4444';
       ctx.strokeStyle = '#cc2200';
       ctx.lineWidth = 1;
+      ctx.beginPath();
       for (let i = 0; i < spikeCount; i++) {
         const angle = (i / spikeCount) * Math.PI * 2;
-        ctx.save();
-        ctx.rotate(angle);
-        ctx.beginPath();
-        ctx.moveTo(r * pulse + spikeLen, 0);
-        ctx.lineTo(r * pulse - 2, -spikeBase);
-        ctx.lineTo(r * pulse - 2, spikeBase);
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        // Tip of spike
+        const tipDist = rp + spikeLen;
+        // Base points perpendicular to spike direction
+        const baseDist = rp - 2;
+        ctx.moveTo(tipDist * cos, tipDist * sin);
+        ctx.lineTo(baseDist * cos - spikeBase * sin, baseDist * sin + spikeBase * cos);
+        ctx.lineTo(baseDist * cos + spikeBase * sin, baseDist * sin - spikeBase * cos);
         ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
       }
+      ctx.fill();
+      ctx.stroke();
 
       // Inner warning dot
       ctx.beginPath();

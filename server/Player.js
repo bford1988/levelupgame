@@ -57,6 +57,9 @@ class Player {
     // Viewport (for culling)
     this.viewportW = 1920;
     this.viewportH = 1080;
+
+    // Track which players this client has received static data for
+    this.knownPlayers = new Set();
   }
 
   applyInput(input) {
@@ -109,7 +112,21 @@ class Player {
     this.speedPowerUpMaxTicks = 0;
   }
 
-  serialize() {
+  // Static fields: sent once when a player first enters another's viewport
+  serializeStatic() {
+    return {
+      i: this.id,
+      n: this.name,
+      c: this.color,
+      ac: this.accentColor,
+      d: this.decal,
+      bs: this.bulletShape,
+      bfm: config.BOOST_FUEL_MAX,
+    };
+  }
+
+  // Dynamic fields: sent every tick
+  serializeDynamic() {
     return {
       i: this.id,
       x: Math.round(this.x * 10) / 10,
@@ -119,24 +136,23 @@ class Player {
       s: this.score,
       h: Math.round(this.health),
       mh: Math.round(this.maxHealth),
-      n: this.name,
-      c: this.color,
-      ac: this.accentColor,
-      d: this.decal,
-      bs: this.bulletShape,
       k: this.kills,
       ti: this.tier,
       al: this.alive ? 1 : 0,
       inv: this.invulnTicks > 0 ? 1 : 0,
-      bf: Math.round(this.boostFuel),     // boost fuel remaining
-      bfm: config.BOOST_FUEL_MAX,          // boost fuel max (for UI)
+      bf: Math.round(this.boostFuel),
       boosting: this.boostActive && this.boostFuel > 0 ? 1 : 0,
-      gpu: this.gunPowerUp,             // gun power-up: 'laser', 'rapidfire', or null
-      gpt: this.gunPowerUpTicks,        // gun power-up ticks remaining
-      gptm: this.gunPowerUpMaxTicks,    // gun power-up max ticks
-      spt: this.speedPowerUpTicks,      // speed power-up ticks remaining
-      sptm: this.speedPowerUpMaxTicks,  // speed power-up max ticks
+      gpu: this.gunPowerUp,
+      gpt: this.gunPowerUpTicks,
+      gptm: this.gunPowerUpMaxTicks,
+      spt: this.speedPowerUpTicks,
+      sptm: this.speedPowerUpMaxTicks,
     };
+  }
+
+  // Full serialize (for spectators and initial sends)
+  serialize() {
+    return { ...this.serializeStatic(), ...this.serializeDynamic() };
   }
 }
 

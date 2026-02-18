@@ -138,7 +138,13 @@ const server = http.createServer((req, res) => {
   serveStatic(req, res);
 });
 
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({
+  server,
+  perMessageDeflate: {
+    zlibDeflateOptions: { level: 1 },
+    threshold: 128,
+  },
+});
 
 wss.on('connection', (ws, req) => {
   const u = parseUrl(req);

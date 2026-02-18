@@ -1,10 +1,32 @@
 class TankRenderer {
   constructor() {
     this.time = 0;
+    this.gradientCache = new Map();
+    this.decalCache = new Map();
+    this.frameCount = 0;
+    // Pre-compute color caches for darken/lighten
+    this.colorCache = new Map();
   }
 
   update(dt) {
     this.time += dt;
+    this.frameCount++;
+    // Clear caches periodically to prevent unbounded growth
+    if (this.frameCount % 120 === 0) {
+      if (this.gradientCache.size > 200) this.gradientCache.clear();
+      if (this.decalCache.size > 50) this.decalCache.clear();
+      if (this.colorCache.size > 500) this.colorCache.clear();
+    }
+  }
+
+  getCachedColor(type, hex, amount) {
+    const key = type + hex + amount;
+    let result = this.colorCache.get(key);
+    if (!result) {
+      result = type === 'd' ? this._darken(hex, amount) : this._lighten(hex, amount);
+      this.colorCache.set(key, result);
+    }
+    return result;
   }
 
   drawTank(ctx, camera, player, isMe) {
@@ -132,28 +154,42 @@ class TankRenderer {
       }
     }
 
-    // Tier 5+: outer glow (intensity scales)
+    // Tier 5+: outer glow (intensity scales) - cached gradient
     if (tier >= 5) {
       const intensity = Math.min(1, (tier - 4) * 0.08);
       const pulse = 0.9 + Math.sin(this.time * 3) * 0.1;
       const glowR = r * (1.2 + tier * 0.02) * pulse;
-      const gradient = ctx.createRadialGradient(0, 0, r, 0, 0, glowR);
+      const rr = Math.round(r);
+      const gr = Math.round(glowR);
       const alpha = Math.floor(intensity * 80).toString(16).padStart(2, '0');
-      gradient.addColorStop(0, accent + alpha);
-      gradient.addColorStop(1, accent + '00');
+      const gKey = `g1_${accent}_${rr}_${gr}`;
+      let gradient = this.gradientCache.get(gKey);
+      if (!gradient) {
+        gradient = ctx.createRadialGradient(0, 0, rr, 0, 0, gr);
+        gradient.addColorStop(0, accent + alpha);
+        gradient.addColorStop(1, accent + '00');
+        this.gradientCache.set(gKey, gradient);
+      }
       ctx.beginPath();
       ctx.arc(0, 0, glowR, 0, Math.PI * 2);
       ctx.fillStyle = gradient;
       ctx.fill();
     }
 
-    // Tier 12+: second glow layer
+    // Tier 12+: second glow layer - cached gradient
     if (tier >= 12) {
       const pulse2 = 0.85 + Math.sin(this.time * 2 + 1) * 0.15;
       const glowR2 = r * (1.5 + tier * 0.03) * pulse2;
-      const gradient2 = ctx.createRadialGradient(0, 0, r * 1.1, 0, 0, glowR2);
-      gradient2.addColorStop(0, accent + '20');
-      gradient2.addColorStop(1, accent + '00');
+      const ri = Math.round(r * 1.1);
+      const gr2 = Math.round(glowR2);
+      const gKey2 = `g2_${accent}_${ri}_${gr2}`;
+      let gradient2 = this.gradientCache.get(gKey2);
+      if (!gradient2) {
+        gradient2 = ctx.createRadialGradient(0, 0, ri, 0, 0, gr2);
+        gradient2.addColorStop(0, accent + '20');
+        gradient2.addColorStop(1, accent + '00');
+        this.gradientCache.set(gKey2, gradient2);
+      }
       ctx.beginPath();
       ctx.arc(0, 0, glowR2, 0, Math.PI * 2);
       ctx.fillStyle = gradient2;
@@ -281,11 +317,18 @@ class TankRenderer {
   drawAura(ctx, r, tier, color) {
     const auraR = r * (1.8 + (tier - 20) * 0.1);
     const pulse = 0.8 + Math.sin(this.time * 1.5) * 0.2;
-    const gradient = ctx.createRadialGradient(0, 0, r * 0.5, 0, 0, auraR * pulse);
+    const innerR = Math.round(r * 0.5);
+    const outerR = Math.round(auraR * pulse);
     const alpha = Math.min(40, 15 + (tier - 20) * 5);
-    gradient.addColorStop(0, color + alpha.toString(16).padStart(2, '0'));
-    gradient.addColorStop(0.6, color + '10');
-    gradient.addColorStop(1, color + '00');
+    const aKey = `a1_${color}_${innerR}_${outerR}`;
+    let gradient = this.gradientCache.get(aKey);
+    if (!gradient) {
+      gradient = ctx.createRadialGradient(0, 0, innerR, 0, 0, outerR);
+      gradient.addColorStop(0, color + alpha.toString(16).padStart(2, '0'));
+      gradient.addColorStop(0.6, color + '10');
+      gradient.addColorStop(1, color + '00');
+      this.gradientCache.set(aKey, gradient);
+    }
     ctx.beginPath();
     ctx.arc(0, 0, auraR * pulse, 0, Math.PI * 2);
     ctx.fillStyle = gradient;
@@ -295,9 +338,16 @@ class TankRenderer {
     if (tier >= 23) {
       const pulse2 = 0.7 + Math.sin(this.time * 1.1 + 2) * 0.3;
       const aura2 = auraR * 1.3 * pulse2;
-      const g2 = ctx.createRadialGradient(0, 0, r, 0, 0, aura2);
-      g2.addColorStop(0, color + '15');
-      g2.addColorStop(1, color + '00');
+      const rr = Math.round(r);
+      const ar2 = Math.round(aura2);
+      const aKey2 = `a2_${color}_${rr}_${ar2}`;
+      let g2 = this.gradientCache.get(aKey2);
+      if (!g2) {
+        g2 = ctx.createRadialGradient(0, 0, rr, 0, 0, ar2);
+        g2.addColorStop(0, color + '15');
+        g2.addColorStop(1, color + '00');
+        this.gradientCache.set(aKey2, g2);
+      }
       ctx.beginPath();
       ctx.arc(0, 0, aura2, 0, Math.PI * 2);
       ctx.fillStyle = g2;
@@ -307,17 +357,44 @@ class TankRenderer {
 
   drawDecal(ctx, x, y, size, decalId, color) {
     const s = size * 0.6;
-    ctx.save();
-    ctx.translate(x, y);
+    const cacheSize = Math.round(s);
+    // Skip tiny decals
+    if (cacheSize < 2) return;
+
+    const cacheKey = `dc_${decalId}_${color}_${cacheSize}`;
+    let cached = this.decalCache.get(cacheKey);
+    if (cached) {
+      ctx.drawImage(cached, x - cached.width / 2, y - cached.height / 2);
+      return;
+    }
+
+    // Render to off-screen canvas
+    const pad = Math.ceil(s * 2.5);
+    const offscreen = document.createElement('canvas');
+    offscreen.width = pad * 2;
+    offscreen.height = pad * 2;
+    const oc = offscreen.getContext('2d');
+    oc.translate(pad, pad);
 
     // Glow behind decal
-    ctx.shadowColor = color;
-    ctx.shadowBlur = s * 0.8;
-    ctx.fillStyle = color;
-    ctx.strokeStyle = this.lighten(color, 0.3);
-    ctx.lineWidth = 1.5;
-    ctx.globalAlpha = 0.9;
+    oc.shadowColor = color;
+    oc.shadowBlur = s * 0.8;
+    oc.fillStyle = color;
+    oc.strokeStyle = this.lighten(color, 0.3);
+    oc.lineWidth = 1.5;
+    oc.globalAlpha = 0.9;
 
+    this._renderDecalPaths(oc, s, decalId, color);
+
+    oc.globalAlpha = 1.0;
+    oc.shadowBlur = 0;
+
+    this.decalCache.set(cacheKey, offscreen);
+    ctx.drawImage(offscreen, x - pad, y - pad);
+    return;
+  }
+
+  _renderDecalPaths(ctx, s, decalId, color) {
     switch (decalId) {
       case 1: { // Skull
         // Cranium
@@ -589,8 +666,6 @@ class TankRenderer {
         break;
       }
     }
-
-    ctx.restore();
   }
 
   drawStar(ctx, x, y, outerR, innerR, points, color) {
@@ -761,12 +836,20 @@ class TankRenderer {
   }
 
   darken(hex, amount) {
+    return this.getCachedColor('d', hex, amount);
+  }
+
+  lighten(hex, amount) {
+    return this.getCachedColor('l', hex, amount);
+  }
+
+  _darken(hex, amount) {
     const rgb = this.hexToRgb(hex);
     const f = 1 - amount;
     return `rgb(${Math.floor(rgb.r * f)},${Math.floor(rgb.g * f)},${Math.floor(rgb.b * f)})`;
   }
 
-  lighten(hex, amount) {
+  _lighten(hex, amount) {
     const rgb = this.hexToRgb(hex);
     return `rgb(${Math.min(255, Math.floor(rgb.r + (255 - rgb.r) * amount))},${Math.min(255, Math.floor(rgb.g + (255 - rgb.g) * amount))},${Math.min(255, Math.floor(rgb.b + (255 - rgb.b) * amount))})`;
   }

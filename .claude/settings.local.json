@@ -21,7 +21,11 @@
       "Bash(node:*)",
       "Bash(npx @digitalocean/mcp:*)",
       "WebFetch(domain:www.digitalocean.com)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(for f in server/index.js server/Player.js server/Game.js server/config.js shared/constants.js public/js/main.js public/js/Network.js public/js/Interpolation.js public/js/Prediction.js public/js/ParticleSystem.js public/js/TankRenderer.js public/js/Renderer.js)",
+      "Bash(do node -c \"/mnt/c/users/fordb/desktop/projects/source/levelupgame/$f\")",
+      "Bash(echo:*)",
+      "Bash(done)"
     ]
   },
   "enableAllProjectMcpServers": true,

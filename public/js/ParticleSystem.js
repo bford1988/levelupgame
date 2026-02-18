@@ -214,7 +214,9 @@ class ParticleSystem {
       p.vx *= 0.96;
       p.vy *= 0.96;
       if (p.life <= 0) {
-        this.particles.splice(i, 1);
+        // Swap-and-pop: O(1) removal instead of O(n) splice
+        this.particles[i] = this.particles[this.particles.length - 1];
+        this.particles.pop();
       }
     }
   }
