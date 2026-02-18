@@ -368,3 +368,105 @@ body {
 .decal-option canvas {
   display: block;
 }
+
+/* Mobile-specific body styles */
+body.mobile {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: auto;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body.mobile .color-swatch,
+body.mobile .decal-option,
+body.mobile .bullet-option,
+body.mobile button {
+  touch-action: manipulation;
+}
+
+/* Responsive: phones */
+@media (max-width: 600px) {
+  .barrage-letter {
+    font-size: 40px;
+    letter-spacing: 2px;
+  }
+
+  #join-screen .subtitle {
+    font-size: 12px;
+    margin-bottom: 20px;
+  }
+
+  .join-form {
+    padding: 16px 20px;
+    width: calc(100% - 32px);
+    max-width: 320px;
+  }
+
+  .join-form input[type="text"] {
+    width: 100%;
+  }
+
+  .color-swatches,
+  .decal-options,
+  .bullet-options {
+    width: 100%;
+    max-width: 260px;
+  }
+
+  .color-swatch {
+    width: 28px;
+    height: 28px;
+  }
+
+  .decal-option {
+    width: 36px;
+    height: 36px;
+  }
+
+  .bullet-option {
+    width: 38px;
+    height: 38px;
+  }
+
+  #play-btn,
+  #randomize-btn,
+  #customize-toggle {
+    width: 100%;
+  }
+
+  #tank-preview {
+    width: 100%;
+    max-width: 280px;
+    height: auto;
+    aspect-ratio: 280 / 160;
+  }
+
+  #customize-section {
+    width: 100%;
+    max-width: 260px;
+  }
+
+  #death-overlay h2 {
+    font-size: 36px;
+  }
+
+  #death-overlay p {
+    font-size: 15px;
+    padding: 0 20px;
+  }
+
+  #death-overlay .death-stats {
+    font-size: 14px;
+  }
+
+  #death-catchphrase {
+    font-size: 16px;
+    padding: 0 20px;
+  }
+
+  #death-overlay button {
+    padding: 14px 40px;
+    font-size: 16px;
+  }
+}

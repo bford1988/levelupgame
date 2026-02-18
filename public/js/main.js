@@ -1,3 +1,7 @@
+// Mobile detection
+const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+if (isMobile) document.body.classList.add('mobile');
+
 // Global game state
 let canvas, camera, input, renderer, network, interpolation, particles, hud;
 let myId = null;
@@ -49,11 +53,27 @@ function startGame() {
     canvas.height = window.innerHeight;
   });
 
+  // Mobile: prevent touch defaults on canvas and request fullscreen
+  if (isMobile) {
+    canvas.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+    canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+    canvas.addEventListener('touchend', (e) => e.preventDefault(), { passive: false });
+    canvas.addEventListener('touchcancel', (e) => e.preventDefault(), { passive: false });
+
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+    if (screen.orientation && screen.orientation.lock) {
+      screen.orientation.lock('landscape').catch(() => {});
+    }
+  }
+
   // Hide join screen
   joinScreen.style.display = 'none';
 
   // Initialize systems
   camera = new Camera(canvas);
+  if (isMobile) camera._mobileZoomFactor = 0.85;
   input = new Input(canvas);
   renderer = new Renderer(canvas);
   network = new Network();
@@ -256,7 +276,7 @@ function gameLoop(timestamp) {
 
     // HUD
     if (me2) me2.zoom = camera.zoom;
-    hud.draw(renderer.ctx, stateWithObs, me2, canvas, network.mapWidth, network.mapHeight, network.instanceId);
+    hud.draw(renderer.ctx, stateWithObs, me2, canvas, network.mapWidth, network.mapHeight, network.instanceId, input);
   }
 
   requestAnimationFrame(gameLoop);
@@ -282,6 +302,22 @@ respawnBtn.addEventListener('click', () => {
   if (input) input.resetBoost();
   network.sendRespawn();
 });
+
+if (isMobile) {
+  respawnBtn.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    deathOverlay.style.display = 'none';
+    if (input) input.resetBoost();
+    network.sendRespawn();
+  });
+
+  // Prevent pull-to-refresh on document (allow scrolling inside join screen)
+  document.addEventListener('touchmove', (e) => {
+    if (!e.target.closest('#join-screen')) {
+      e.preventDefault();
+    }
+  }, { passive: false });
+}
 
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && deathOverlay.style.display === 'flex') {

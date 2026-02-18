@@ -20,6 +20,12 @@ class Camera {
     // Zoom out as player grows - scales smoothly for huge tanks
     this.targetZoom = 1.0 / (1 + (playerRadius - 20) * 0.008);
     this.targetZoom = Math.max(0.15, Math.min(1.0, this.targetZoom));
+
+    // Mobile: zoom out a bit more for smaller screens
+    if (this._mobileZoomFactor) {
+      this.targetZoom *= this._mobileZoomFactor;
+      this.targetZoom = Math.max(0.15, this.targetZoom);
+    }
   }
 
   shake(intensity) {
