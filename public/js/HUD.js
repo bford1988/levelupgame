@@ -382,7 +382,7 @@ class HUD {
 
     // Mobile: upper-left below tier bar; Desktop: bottom center
     const barX = isMob ? 12 : (canvas.width / 2 - barW / 2);
-    const barY = isMob ? 84 : (canvas.height - 20);
+    const barY = isMob ? 92 : (canvas.height - 20);
 
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
     ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
