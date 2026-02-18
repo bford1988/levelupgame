@@ -74,7 +74,10 @@ class Bot {
     const name = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
     const color = BOT_COLORS[Math.floor(Math.random() * BOT_COLORS.length)];
     const catchphrase = BOT_CATCHPHRASES[Math.floor(Math.random() * BOT_CATCHPHRASES.length)];
-    this.player = new Player(name, color, null, catchphrase);
+    const accentColor = BOT_COLORS[Math.floor(Math.random() * BOT_COLORS.length)];
+    const decal = Math.floor(Math.random() * 10);
+    const bulletShape = Math.floor(Math.random() * 5);
+    this.player = new Player(name, color, null, catchphrase, accentColor, decal, bulletShape);
     this.player.isBot = true;
 
     this.state = 'WANDER';

@@ -4,6 +4,7 @@ class HUD {
     this.tierUpNotification = null;
     this.scoreFlash = 0; // 0-1 flash intensity
     this.damageFlash = 0; // 0-1 red vignette intensity
+    this.warpDeniedNotification = null;
     this.tierNames = [
       '', 'Recruit', 'Soldier', 'Veteran', 'Fighter', 'Warrior',
       'Guardian', 'Knight', 'Champion', 'Destroyer', 'Warlord',
@@ -55,6 +56,14 @@ class HUD {
     this.damageFlash = Math.min(1, Math.max(this.damageFlash, intensity));
   }
 
+  showWarpDenied(text) {
+    this.warpDeniedNotification = {
+      text,
+      time: Date.now(),
+      duration: 2000,
+    };
+  }
+
   draw(ctx, state, me, canvas, mapWidth, mapHeight, instanceId) {
     if (!state) return;
     this.drawDamageVignette(ctx, canvas);
@@ -64,6 +73,7 @@ class HUD {
     this.drawScore(ctx, me, canvas);
     this.drawKillFeed(ctx, canvas);
     this.drawTierUpNotification(ctx, canvas);
+    this.drawWarpDeniedNotification(ctx, canvas);
     this.drawInstanceId(ctx, canvas, instanceId);
   }
 
@@ -121,7 +131,7 @@ class HUD {
       // Score + kills
       ctx.fillStyle = '#999';
       ctx.textAlign = 'right';
-      ctx.fillText(`${this.formatScore(p.s)} | ${p.k}K`, x + w - 10, ry + 20);
+      ctx.fillText(`${this.formatScore(p.s)} | ${p.k} kills`, x + w - 10, ry + 20);
       ctx.textAlign = 'left';
     }
   }
@@ -159,6 +169,34 @@ class HUD {
           Math.max(2, o.w * scaleX),
           Math.max(2, o.h * scaleY)
         );
+      }
+    }
+
+    // Warp holes
+    if (state.wh) {
+      for (const wh of state.wh) {
+        const wr = Math.max(3, wh.r * scaleX);
+        let whColor;
+        if (wh.ms <= 5000) whColor = '#00e5ff';
+        else if (wh.ms <= 10000) whColor = '#00ff88';
+        else whColor = '#aa44ff';
+        ctx.beginPath();
+        ctx.arc(x + wh.x * scaleX, y + wh.y * scaleY, wr, 0, Math.PI * 2);
+        ctx.strokeStyle = whColor;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+
+    // Power-ups
+    if (state.pu) {
+      for (const pu of state.pu) {
+        ctx.fillStyle = pu.c;
+        ctx.save();
+        ctx.translate(x + pu.x * scaleX, y + pu.y * scaleY);
+        ctx.rotate(Math.PI / 4);
+        ctx.fillRect(-2, -2, 4, 4);
+        ctx.restore();
       }
     }
 
@@ -352,6 +390,32 @@ class HUD {
     ctx.fillStyle = '#ffffff';
     ctx.fillText(this.tierUpNotification.tierName, canvas.width / 2, canvas.height / 3 + 40);
 
+    ctx.restore();
+  }
+
+  drawWarpDeniedNotification(ctx, canvas) {
+    if (!this.warpDeniedNotification) return;
+
+    const elapsed = Date.now() - this.warpDeniedNotification.time;
+    if (elapsed > this.warpDeniedNotification.duration) {
+      this.warpDeniedNotification = null;
+      return;
+    }
+
+    const progress = elapsed / this.warpDeniedNotification.duration;
+    let alpha;
+    if (progress < 0.1) alpha = progress / 0.1;
+    else if (progress < 0.6) alpha = 1;
+    else alpha = 1 - (progress - 0.6) / 0.4;
+
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, alpha);
+    ctx.font = 'bold 24px "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#ff4444';
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = '#ff6666';
+    ctx.fillText(this.warpDeniedNotification.text, canvas.width / 2, canvas.height / 2 - 60);
     ctx.restore();
   }
 

@@ -34,6 +34,9 @@ function startGame() {
   playerName = nameInput.value.trim() || 'Player';
   playerCatchphrase = catchphraseInput.value.trim();
   const color = colorInput.value;
+  const accentColor = document.getElementById('accent-input').value;
+  const decal = parseInt(document.getElementById('decal-input').value, 10) || 0;
+  const bulletShape = parseInt(document.getElementById('bullet-input').value, 10) || 0;
 
   // Setup canvas
   canvas = document.getElementById('game-canvas');
@@ -74,6 +77,7 @@ function startGame() {
 
   network.onDeath = (msg) => {
     showDeathScreen(msg.killerName, msg.score, msg.kills, msg.catchphrase);
+    input.resetBoost(); // prevent auto-boost on respawn
     // Reset tracking on death
     lastScore = 0;
     lastTier = 0;
@@ -100,8 +104,13 @@ function startGame() {
     }
   };
 
+  network.onWarpDenied = (msg) => {
+    const maxStr = msg.ms >= 1000 ? (msg.ms / 1000) + 'K' : msg.ms;
+    hud.showWarpDenied(`Too many points! Max: ${maxStr}`);
+  };
+
   // Connect
-  network.connect(playerName, color, playerCatchphrase);
+  network.connect(playerName, color, playerCatchphrase, accentColor, decal, bulletShape);
   gameActive = true;
 
   // Start game loop
@@ -210,6 +219,21 @@ function gameLoop(timestamp) {
       }
     }
 
+    // Warp effects
+    if (state.wp) {
+      for (const w of state.wp) {
+        particles.emitWarp(w.x, w.y, w.r);
+      }
+    }
+
+    // Laser beam effects
+    if (state.bm) {
+      for (const bm of state.bm) {
+        camera.shake(4);
+        particles.emit('hit', bm.x2, bm.y2, '#ffffff', 5);
+      }
+    }
+
     camera.update();
 
     // Update particles and tank renderer
@@ -217,17 +241,20 @@ function gameLoop(timestamp) {
     renderer.tankRenderer.update(dt);
 
     // Render
+    const me2 = state.p.find(p => p.i === myId);
     const stateWithObs = {
       ...state,
       obs: network.obstacles,
+      wh: network.warpHoles,
     };
-    renderer.render(stateWithObs, camera, myId, network.mapWidth, network.mapHeight);
+    const myScore = me2 ? (me2.s || 0) : 0;
+    const myPos = me2 ? { x: me2.x, y: me2.y } : null;
+    renderer.render(stateWithObs, camera, myId, network.mapWidth, network.mapHeight, myScore, myPos);
 
     // Particles
     particles.draw(renderer.ctx, camera);
 
     // HUD
-    const me2 = state.p.find(p => p.i === myId);
     if (me2) me2.zoom = camera.zoom;
     hud.draw(renderer.ctx, stateWithObs, me2, canvas, network.mapWidth, network.mapHeight, network.instanceId);
   }
@@ -252,12 +279,14 @@ function showDeathScreen(killerName, score, kills, catchphrase) {
 
 respawnBtn.addEventListener('click', () => {
   deathOverlay.style.display = 'none';
+  if (input) input.resetBoost();
   network.sendRespawn();
 });
 
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && deathOverlay.style.display === 'flex') {
     deathOverlay.style.display = 'none';
+    if (input) input.resetBoost();
     network.sendRespawn();
   }
 });

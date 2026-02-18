@@ -140,10 +140,44 @@ class Renderer {
 
       const s = camera.worldToScreen(b.x, b.y);
       const r = b.r * camera.zoom;
+      const shape = b.bs || 0;
 
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
       ctx.fillStyle = b.c;
+      ctx.beginPath();
+
+      switch (shape) {
+        case 1: // square
+          ctx.rect(s.x - r, s.y - r, r * 2, r * 2);
+          break;
+        case 2: // triangle
+          ctx.moveTo(s.x, s.y - r);
+          ctx.lineTo(s.x + r * 0.866, s.y + r * 0.5);
+          ctx.lineTo(s.x - r * 0.866, s.y + r * 0.5);
+          ctx.closePath();
+          break;
+        case 3: // star (5-point)
+          for (let i = 0; i < 10; i++) {
+            const angle = (i / 10) * Math.PI * 2 - Math.PI / 2;
+            const rad = i % 2 === 0 ? r : r * 0.45;
+            const px = s.x + Math.cos(angle) * rad;
+            const py = s.y + Math.sin(angle) * rad;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
+          break;
+        case 4: // diamond
+          ctx.moveTo(s.x, s.y - r);
+          ctx.lineTo(s.x + r * 0.7, s.y);
+          ctx.lineTo(s.x, s.y + r);
+          ctx.lineTo(s.x - r * 0.7, s.y);
+          ctx.closePath();
+          break;
+        default: // circle
+          ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+          break;
+      }
+
       ctx.fill();
 
       // Bullet outline
@@ -183,44 +217,61 @@ class Renderer {
     const time = Date.now() / 1000;
 
     for (const m of mines) {
-      if (m.x < vp.left - 30 || m.x > vp.right + 30 ||
-          m.y < vp.top - 30 || m.y > vp.bottom + 30) continue;
+      if (m.x < vp.left - 40 || m.x > vp.right + 40 ||
+          m.y < vp.top - 40 || m.y > vp.bottom + 40) continue;
 
       const s = camera.worldToScreen(m.x, m.y);
       const r = m.r * camera.zoom;
-      const pulse = 0.85 + Math.sin(time * 4 + m.x) * 0.15;
+      const pulse = 0.9 + Math.sin(time * 3 + m.x) * 0.1;
+      const spin = time * 0.8 + m.x * 0.01;
 
       // Outer danger glow
       ctx.beginPath();
-      ctx.arc(s.x, s.y, r * 2 * pulse, 0, Math.PI * 2);
+      ctx.arc(s.x, s.y, r * 2.2 * pulse, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255,50,50,0.08)';
       ctx.fill();
 
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(spin);
+
       // Mine body
       ctx.beginPath();
-      ctx.arc(s.x, s.y, r * pulse, 0, Math.PI * 2);
+      ctx.arc(0, 0, r * pulse, 0, Math.PI * 2);
       ctx.fillStyle = '#cc2200';
       ctx.fill();
       ctx.lineWidth = 2;
       ctx.strokeStyle = '#ff4444';
       ctx.stroke();
 
+      // Triangle spikes around the edge
+      const spikeCount = 8;
+      const spikeLen = r * 0.45;
+      const spikeBase = r * 0.18;
+      ctx.fillStyle = '#ff4444';
+      ctx.strokeStyle = '#cc2200';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < spikeCount; i++) {
+        const angle = (i / spikeCount) * Math.PI * 2;
+        ctx.save();
+        ctx.rotate(angle);
+        ctx.beginPath();
+        ctx.moveTo(r * pulse + spikeLen, 0);
+        ctx.lineTo(r * pulse - 2, -spikeBase);
+        ctx.lineTo(r * pulse - 2, spikeBase);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
       // Inner warning dot
       ctx.beginPath();
-      ctx.arc(s.x, s.y, r * 0.35, 0, Math.PI * 2);
+      ctx.arc(0, 0, r * 0.35, 0, Math.PI * 2);
       ctx.fillStyle = '#ff8800';
       ctx.fill();
 
-      // Spikes
-      for (let i = 0; i < 6; i++) {
-        const angle = (i / 6) * Math.PI * 2;
-        const sx = s.x + Math.cos(angle) * r * pulse;
-        const sy = s.y + Math.sin(angle) * r * pulse;
-        ctx.beginPath();
-        ctx.arc(sx, sy, r * 0.2, 0, Math.PI * 2);
-        ctx.fillStyle = '#ff4444';
-        ctx.fill();
-      }
+      ctx.restore();
     }
   }
 
@@ -265,15 +316,255 @@ class Renderer {
     }
   }
 
-  render(state, camera, myId, mapWidth, mapHeight) {
+  drawWarpHoles(warpHoles, camera, myScore, myPos) {
+    if (!warpHoles) return;
+    const ctx = this.ctx;
+    const vp = camera.getViewport();
+    const time = Date.now() / 1000;
+    const LABEL_DISTANCE = 600; // world units - only show labels when this close
+
+    for (const wh of warpHoles) {
+      if (wh.x < vp.left - 100 || wh.x > vp.right + 100 ||
+          wh.y < vp.top - 100 || wh.y > vp.bottom + 100) continue;
+
+      const s = camera.worldToScreen(wh.x, wh.y);
+      const r = wh.r * camera.zoom;
+      const canUse = myScore <= wh.ms;
+
+      // Distance from player to warp hole
+      let dist = Infinity;
+      if (myPos) {
+        const dx = myPos.x - wh.x;
+        const dy = myPos.y - wh.y;
+        dist = Math.sqrt(dx * dx + dy * dy);
+      }
+      const isNearby = dist < LABEL_DISTANCE;
+
+      // Color based on max score tier
+      let color, glowColor;
+      if (wh.ms <= 5000) { color = '#00e5ff'; glowColor = 'rgba(0,229,255,'; }
+      else if (wh.ms <= 10000) { color = '#00ff88'; glowColor = 'rgba(0,255,136,'; }
+      else { color = '#aa44ff'; glowColor = 'rgba(170,68,255,'; }
+
+      const alpha = canUse ? 1.0 : 0.3;
+      const pulse = 0.85 + Math.sin(time * 3) * 0.15;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // Outer glow
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r * 1.8 * pulse, 0, Math.PI * 2);
+      ctx.fillStyle = glowColor + '0.06)';
+      ctx.fill();
+
+      // Swirl rings
+      for (let ring = 0; ring < 3; ring++) {
+        const ringR = r * (0.4 + ring * 0.3) * pulse;
+        const rotation = time * (2 - ring * 0.5) + ring;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, ringR, rotation, rotation + Math.PI * 1.2);
+        ctx.lineWidth = (3 - ring) * camera.zoom;
+        ctx.strokeStyle = glowColor + (0.6 - ring * 0.15) + ')';
+        ctx.stroke();
+      }
+
+      // Center portal
+      const gradient = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * 0.6);
+      gradient.addColorStop(0, glowColor + '0.3)');
+      gradient.addColorStop(0.7, glowColor + '0.1)');
+      gradient.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r * 0.6, 0, Math.PI * 2);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+
+      // Border circle
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+      ctx.lineWidth = 2 * camera.zoom;
+      ctx.strokeStyle = canUse ? color : 'rgba(100,100,100,0.5)';
+      ctx.stroke();
+
+      // Proximity-based labels (only when nearby, all inside the circle)
+      if (isNearby) {
+        const maxStr = wh.ms >= 1000 ? (wh.ms / 1000) + 'K' : wh.ms;
+        ctx.textAlign = 'center';
+
+        if (canUse) {
+          // "WARP" top line inside portal
+          ctx.font = `bold ${Math.round(22 * camera.zoom)}px "Segoe UI", Arial, sans-serif`;
+          ctx.fillStyle = color;
+          ctx.fillText('WARP', s.x, s.y - 4 * camera.zoom);
+          // Score limit below, still inside circle
+          ctx.font = `bold ${Math.round(20 * camera.zoom)}px "Segoe UI", Arial, sans-serif`;
+          ctx.globalAlpha = alpha * 0.7;
+          ctx.fillText(`< ${maxStr}`, s.x, s.y + 18 * camera.zoom);
+        } else {
+          // "LOCKED" top line inside portal
+          ctx.font = `bold ${Math.round(20 * camera.zoom)}px "Segoe UI", Arial, sans-serif`;
+          ctx.fillStyle = '#ff6666';
+          ctx.fillText('LOCKED', s.x, s.y - 4 * camera.zoom);
+          // Max info inside circle
+          ctx.font = `bold ${Math.round(18 * camera.zoom)}px "Segoe UI", Arial, sans-serif`;
+          ctx.fillStyle = '#999';
+          ctx.fillText(`Max: ${maxStr}`, s.x, s.y + 18 * camera.zoom);
+        }
+      }
+
+      ctx.restore();
+    }
+  }
+
+  render(state, camera, myId, mapWidth, mapHeight, myScore, myPos) {
     this.clear();
     this.drawGrid(camera, mapWidth, mapHeight);
     this.drawOutOfBounds(camera, mapWidth, mapHeight);
+    this.drawWarpHoles(state.wh, camera, myScore || 0, myPos);
     this.drawMines(state.mn, camera);
+    this.drawPowerUps(state.pu, camera);
     this.drawFood(state.f, camera);
     this.drawObstacles(state.obs, camera);
     this.drawTurrets(state.tu, camera);
     this.drawProjectiles(state.b, camera);
+    this.drawBeams(state.bm, camera);
     this.drawTanks(state.p, camera, myId);
+    this.drawPowerUpBars(state.p, camera, myId);
+  }
+
+  drawPowerUps(powerUps, camera) {
+    if (!powerUps) return;
+    const ctx = this.ctx;
+    const vp = camera.getViewport();
+    const time = Date.now() / 1000;
+
+    for (const pu of powerUps) {
+      if (pu.x < vp.left - 30 || pu.x > vp.right + 30 ||
+          pu.y < vp.top - 30 || pu.y > vp.bottom + 30) continue;
+
+      const s = camera.worldToScreen(pu.x, pu.y);
+      const r = pu.r * camera.zoom;
+      const pulse = 0.85 + Math.sin(time * 4 + pu.x) * 0.15;
+      const rotation = time * 2;
+
+      // Outer glow
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r * 2.5 * pulse, 0, Math.PI * 2);
+      ctx.fillStyle = pu.c + '15';
+      ctx.fill();
+
+      // Rotating diamond shape
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(rotation);
+
+      const size = r * 1.5 * pulse;
+      ctx.beginPath();
+      ctx.moveTo(0, -size);
+      ctx.lineTo(size, 0);
+      ctx.lineTo(0, size);
+      ctx.lineTo(-size, 0);
+      ctx.closePath();
+      ctx.fillStyle = pu.c;
+      ctx.fill();
+      ctx.lineWidth = 2 * camera.zoom;
+      ctx.strokeStyle = '#ffffff80';
+      ctx.stroke();
+
+      ctx.restore();
+
+      // Label above the diamond
+      ctx.font = `bold ${Math.round(18 * camera.zoom)}px "Segoe UI", Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = pu.c;
+      let label = '';
+      if (pu.pt === 'laser') label = 'LASER';
+      else if (pu.pt === 'rapidfire') label = 'RAPID FIRE';
+      else if (pu.pt === 'speed') label = 'SPEED';
+      ctx.fillText(label, s.x, s.y - size - 6 * camera.zoom);
+    }
+  }
+
+  drawBeams(beams, camera) {
+    if (!beams) return;
+    const ctx = this.ctx;
+
+    for (const bm of beams) {
+      const s1 = camera.worldToScreen(bm.x1, bm.y1);
+      const s2 = camera.worldToScreen(bm.x2, bm.y2);
+
+      // Outer glow
+      ctx.beginPath();
+      ctx.moveTo(s1.x, s1.y);
+      ctx.lineTo(s2.x, s2.y);
+      ctx.lineWidth = 12 * camera.zoom;
+      ctx.strokeStyle = bm.c + '40';
+      ctx.stroke();
+
+      // Mid glow
+      ctx.beginPath();
+      ctx.moveTo(s1.x, s1.y);
+      ctx.lineTo(s2.x, s2.y);
+      ctx.lineWidth = 6 * camera.zoom;
+      ctx.strokeStyle = bm.c + 'aa';
+      ctx.stroke();
+
+      // Core beam
+      ctx.beginPath();
+      ctx.moveTo(s1.x, s1.y);
+      ctx.lineTo(s2.x, s2.y);
+      ctx.lineWidth = 3 * camera.zoom;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+
+      // Impact flash at endpoint
+      ctx.beginPath();
+      ctx.arc(s2.x, s2.y, 8 * camera.zoom, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffffcc';
+      ctx.fill();
+    }
+  }
+
+  drawPowerUpBars(players, camera, myId) {
+    if (!players) return;
+    const ctx = this.ctx;
+
+    for (const p of players) {
+      if (!p.al) continue;
+
+      // Collect active power-up bars (up to 2: gun + speed)
+      const bars = [];
+      if (p.gpu && p.gpt > 0) {
+        const color = p.gpu === 'laser' ? '#ff4444' : '#ffcc00';
+        bars.push({ ratio: p.gpt / p.gptm, color });
+      }
+      if (p.spt > 0) {
+        bars.push({ ratio: p.spt / p.sptm, color: '#00ff66' });
+      }
+      if (bars.length === 0) continue;
+
+      const s = camera.worldToScreen(p.x, p.y);
+      const r = p.r * camera.zoom;
+      const barW = r * 2;
+      const barH = 5 * camera.zoom;
+      const barX = s.x - barW / 2;
+      const gap = 3 * camera.zoom;
+
+      for (let i = 0; i < bars.length; i++) {
+        const barY = s.y - r - (22 + i * (5 + 3)) * camera.zoom;
+
+        // Background
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+
+        // Empty
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(barX, barY, barW, barH);
+
+        // Fill
+        ctx.fillStyle = bars[i].color;
+        ctx.fillRect(barX, barY, barW * bars[i].ratio, barH);
+      }
+    }
   }
 }

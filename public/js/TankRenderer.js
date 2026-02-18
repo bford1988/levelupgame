@@ -25,45 +25,48 @@ class TankRenderer {
       ctx.globalAlpha = 0.5;
     }
 
+    const color = player.c;
+    const accent = player.ac || player.c;
+
     ctx.save();
     ctx.translate(screen.x, screen.y);
 
     // Tier 20+: background aura
     if (tier >= 20) {
-      this.drawAura(ctx, r, tier, player.c);
+      this.drawAura(ctx, r, tier, accent);
     }
 
     // Tier 15+: rotating outer ring
     if (tier >= 15) {
-      this.drawOrbitRing(ctx, r, tier, player.c);
+      this.drawOrbitRing(ctx, r, tier, accent);
     }
 
     // Draw barrels (behind body)
-    this.drawBarrels(ctx, r, tier, player.c, player.a);
+    this.drawBarrels(ctx, r, tier, accent, player.a);
 
     // Draw body
-    this.drawBody(ctx, r, tier, player.c);
+    this.drawBody(ctx, r, tier, color, accent, player.d || 0);
 
     // Tier 10+: crown spikes
     if (tier >= 10) {
-      this.drawCrown(ctx, r, tier, player.c);
+      this.drawCrown(ctx, r, tier, accent);
     }
 
     ctx.restore();
 
     // Name and health bar (screen space)
     this.drawName(ctx, screen, r, player.n, isMe, tier);
-    this.drawHealthBar(ctx, screen, r, player.h, player.mh, player.c);
+    this.drawHealthBar(ctx, screen, r, player.h, player.mh, color);
 
     // Boost indicator
     if (player.boosting) {
-      this.drawBoostTrail(ctx, screen, r, player.c, player.a);
+      this.drawBoostTrail(ctx, screen, r, accent, player.a);
     }
 
     ctx.globalAlpha = 1.0;
   }
 
-  drawBody(ctx, r, tier, color) {
+  drawBody(ctx, r, tier, color, accent, decal) {
     // Tier 22+: double body (outer translucent ring)
     if (tier >= 22) {
       ctx.beginPath();
@@ -117,11 +120,11 @@ class TankRenderer {
         const angle = (i / plateCount) * Math.PI * 2;
         ctx.save();
         ctx.rotate(angle);
-        ctx.fillStyle = this.darken(color, 0.2);
+        ctx.fillStyle = this.darken(accent, 0.2);
         ctx.fillRect(r * 0.7, -plateHeight, plateWidth, plateHeight * 2);
         // Plate outline for higher tiers
         if (tier >= 8) {
-          ctx.strokeStyle = this.darken(color, 0.4);
+          ctx.strokeStyle = this.darken(accent, 0.4);
           ctx.lineWidth = 1;
           ctx.strokeRect(r * 0.7, -plateHeight, plateWidth, plateHeight * 2);
         }
@@ -136,8 +139,8 @@ class TankRenderer {
       const glowR = r * (1.2 + tier * 0.02) * pulse;
       const gradient = ctx.createRadialGradient(0, 0, r, 0, 0, glowR);
       const alpha = Math.floor(intensity * 80).toString(16).padStart(2, '0');
-      gradient.addColorStop(0, color + alpha);
-      gradient.addColorStop(1, color + '00');
+      gradient.addColorStop(0, accent + alpha);
+      gradient.addColorStop(1, accent + '00');
       ctx.beginPath();
       ctx.arc(0, 0, glowR, 0, Math.PI * 2);
       ctx.fillStyle = gradient;
@@ -149,8 +152,8 @@ class TankRenderer {
       const pulse2 = 0.85 + Math.sin(this.time * 2 + 1) * 0.15;
       const glowR2 = r * (1.5 + tier * 0.03) * pulse2;
       const gradient2 = ctx.createRadialGradient(0, 0, r * 1.1, 0, 0, glowR2);
-      gradient2.addColorStop(0, color + '20');
-      gradient2.addColorStop(1, color + '00');
+      gradient2.addColorStop(0, accent + '20');
+      gradient2.addColorStop(1, accent + '00');
       ctx.beginPath();
       ctx.arc(0, 0, glowR2, 0, Math.PI * 2);
       ctx.fillStyle = gradient2;
@@ -159,13 +162,19 @@ class TankRenderer {
 
     // Center highlight
     const highlightSize = 0.2 - Math.min(0.1, tier * 0.005);
+    const hR = r * Math.max(0.1, highlightSize);
     ctx.beginPath();
-    ctx.arc(0, 0, r * Math.max(0.1, highlightSize), 0, Math.PI * 2);
+    ctx.arc(0, 0, hR, 0, Math.PI * 2);
     ctx.fillStyle = this.lighten(color, 0.2);
     ctx.fill();
 
-    // Tier 18+: center emblem (star shape)
-    if (tier >= 18) {
+    // Decal (drawn on top of highlight)
+    if (decal > 0) {
+      this.drawDecal(ctx, 0, 0, hR * 1.6, decal, accent);
+    }
+
+    // Tier 18+: center emblem (star shape) - only if no decal
+    if (tier >= 18 && !decal) {
       this.drawStar(ctx, 0, 0, r * 0.25, r * 0.12, 5 + Math.floor((tier - 18) / 2), color);
     }
   }
@@ -294,6 +303,294 @@ class TankRenderer {
       ctx.fillStyle = g2;
       ctx.fill();
     }
+  }
+
+  drawDecal(ctx, x, y, size, decalId, color) {
+    const s = size * 0.6;
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Glow behind decal
+    ctx.shadowColor = color;
+    ctx.shadowBlur = s * 0.8;
+    ctx.fillStyle = color;
+    ctx.strokeStyle = this.lighten(color, 0.3);
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.9;
+
+    switch (decalId) {
+      case 1: { // Skull
+        // Cranium
+        ctx.beginPath();
+        ctx.arc(0, -s * 0.12, s * 0.6, Math.PI, 0);
+        ctx.lineTo(s * 0.5, s * 0.15);
+        ctx.quadraticCurveTo(s * 0.4, s * 0.45, s * 0.25, s * 0.5);
+        ctx.lineTo(-s * 0.25, s * 0.5);
+        ctx.quadraticCurveTo(-s * 0.4, s * 0.45, -s * 0.5, s * 0.15);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // Eyes (glowing voids)
+        ctx.shadowBlur = s * 0.5;
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.ellipse(-s * 0.2, -s * 0.1, s * 0.15, s * 0.18, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(s * 0.2, -s * 0.1, s * 0.15, s * 0.18, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Eye glow dots
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.arc(-s * 0.2, -s * 0.12, s * 0.05, 0, Math.PI * 2);
+        ctx.arc(s * 0.2, -s * 0.12, s * 0.05, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 0.9;
+        // Nose
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.moveTo(0, s * 0.08);
+        ctx.lineTo(-s * 0.06, s * 0.18);
+        ctx.lineTo(s * 0.06, s * 0.18);
+        ctx.closePath();
+        ctx.fill();
+        // Teeth
+        ctx.fillStyle = this.lighten(color, 0.4);
+        ctx.strokeStyle = this.darken(color, 0.3);
+        ctx.lineWidth = 0.5;
+        for (let i = -2; i <= 2; i++) {
+          ctx.fillRect(i * s * 0.1 - s * 0.04, s * 0.28, s * 0.07, s * 0.14);
+          ctx.strokeRect(i * s * 0.1 - s * 0.04, s * 0.28, s * 0.07, s * 0.14);
+        }
+        break;
+      }
+      case 2: { // Lightning bolt (thick with bright core)
+        const path = [
+          [-s * 0.2, -s * 0.95],
+          [s * 0.1, -s * 0.1],
+          [-s * 0.1, -s * 0.05],
+          [s * 0.2, s * 0.95],
+          [-s * 0.05, s * 0.15],
+          [s * 0.1, s * 0.1],
+        ];
+        ctx.beginPath();
+        ctx.moveTo(path[0][0], path[0][1]);
+        for (let i = 1; i < path.length; i++) ctx.lineTo(path[i][0], path[i][1]);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // Bright inner core
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = this.lighten(color, 0.6);
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.1, -s * 0.7);
+        ctx.lineTo(s * 0.02, -s * 0.08);
+        ctx.lineTo(-s * 0.04, -s * 0.04);
+        ctx.lineTo(s * 0.1, s * 0.7);
+        ctx.lineTo(0, s * 0.12);
+        ctx.lineTo(s * 0.03, s * 0.08);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+      case 3: { // Star (5-point with double outline)
+        ctx.beginPath();
+        for (let i = 0; i < 10; i++) {
+          const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+          const rad = i % 2 === 0 ? s : s * 0.38;
+          if (i === 0) ctx.moveTo(Math.cos(a) * rad, Math.sin(a) * rad);
+          else ctx.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // Inner star highlight
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = this.lighten(color, 0.5);
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        for (let i = 0; i < 10; i++) {
+          const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+          const rad = i % 2 === 0 ? s * 0.5 : s * 0.2;
+          if (i === 0) ctx.moveTo(Math.cos(a) * rad, Math.sin(a) * rad);
+          else ctx.lineTo(Math.cos(a) * rad, Math.sin(a) * rad);
+        }
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+      case 4: { // Crosshair (detailed with tick marks)
+        ctx.lineWidth = 2;
+        // Outer ring
+        ctx.beginPath();
+        ctx.arc(0, 0, s * 0.7, 0, Math.PI * 2);
+        ctx.stroke();
+        // Cross lines with gap in center
+        const gap = s * 0.2;
+        ctx.beginPath();
+        ctx.moveTo(0, -s); ctx.lineTo(0, -gap);
+        ctx.moveTo(0, gap); ctx.lineTo(0, s);
+        ctx.moveTo(-s, 0); ctx.lineTo(-gap, 0);
+        ctx.moveTo(gap, 0); ctx.lineTo(s, 0);
+        ctx.stroke();
+        // Tick marks on ring
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 12; i++) {
+          if (i % 3 === 0) continue; // skip main axis positions
+          const a = (i / 12) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a) * s * 0.6, Math.sin(a) * s * 0.6);
+          ctx.lineTo(Math.cos(a) * s * 0.8, Math.sin(a) * s * 0.8);
+          ctx.stroke();
+        }
+        // Center dot
+        ctx.beginPath();
+        ctx.arc(0, 0, s * 0.08, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case 5: { // Flame (layered with hot core)
+        // Outer flame
+        ctx.beginPath();
+        ctx.moveTo(0, -s);
+        ctx.quadraticCurveTo(s * 0.7, -s * 0.2, s * 0.45, s * 0.3);
+        ctx.quadraticCurveTo(s * 0.25, s * 0.55, 0, s * 0.7);
+        ctx.quadraticCurveTo(-s * 0.25, s * 0.55, -s * 0.45, s * 0.3);
+        ctx.quadraticCurveTo(-s * 0.7, -s * 0.2, 0, -s);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // Inner hot core
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = this.lighten(color, 0.5);
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(0, -s * 0.55);
+        ctx.quadraticCurveTo(s * 0.35, -s * 0.05, s * 0.2, s * 0.25);
+        ctx.quadraticCurveTo(s * 0.1, s * 0.4, 0, s * 0.35);
+        ctx.quadraticCurveTo(-s * 0.1, s * 0.4, -s * 0.2, s * 0.25);
+        ctx.quadraticCurveTo(-s * 0.35, -s * 0.05, 0, -s * 0.55);
+        ctx.closePath();
+        ctx.fill();
+        // White-hot tip
+        ctx.fillStyle = '#fff';
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.ellipse(0, s * 0.1, s * 0.08, s * 0.15, 0, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case 6: { // Shield (with inner chevron)
+        ctx.beginPath();
+        ctx.moveTo(0, -s);
+        ctx.lineTo(s * 0.85, -s * 0.45);
+        ctx.lineTo(s * 0.85, s * 0.15);
+        ctx.quadraticCurveTo(s * 0.45, s * 0.85, 0, s);
+        ctx.quadraticCurveTo(-s * 0.45, s * 0.85, -s * 0.85, s * 0.15);
+        ctx.lineTo(-s * 0.85, -s * 0.45);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // Inner chevron
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = this.lighten(color, 0.5);
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.4, -s * 0.1);
+        ctx.lineTo(0, s * 0.3);
+        ctx.lineTo(s * 0.4, -s * 0.1);
+        ctx.stroke();
+        break;
+      }
+      case 7: { // Diamond (faceted)
+        ctx.beginPath();
+        ctx.moveTo(0, -s);
+        ctx.lineTo(s * 0.7, 0);
+        ctx.lineTo(0, s);
+        ctx.lineTo(-s * 0.7, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // Facet lines
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = this.lighten(color, 0.4);
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(-s * 0.35, -s * 0.35);
+        ctx.lineTo(0, s * 0.2);
+        ctx.lineTo(s * 0.35, -s * 0.35);
+        ctx.stroke();
+        // Top highlight
+        ctx.fillStyle = this.lighten(color, 0.6);
+        ctx.globalAlpha = 0.4;
+        ctx.beginPath();
+        ctx.moveTo(0, -s);
+        ctx.lineTo(s * 0.35, -s * 0.35);
+        ctx.lineTo(0, s * 0.2);
+        ctx.lineTo(-s * 0.35, -s * 0.35);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+      case 8: { // Heart (with shine)
+        ctx.beginPath();
+        ctx.moveTo(0, s * 0.75);
+        ctx.bezierCurveTo(-s * 1.1, s * 0.1, -s * 1.1, -s * 0.75, 0, -s * 0.3);
+        ctx.bezierCurveTo(s * 1.1, -s * 0.75, s * 1.1, s * 0.1, 0, s * 0.75);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // Highlight shine
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = this.lighten(color, 0.6);
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.ellipse(-s * 0.3, -s * 0.3, s * 0.12, s * 0.2, -0.4, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+      }
+      case 9: { // Biohazard (with ring and glow)
+        // Outer ring
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, s * 0.85, 0, Math.PI * 2);
+        ctx.stroke();
+        // Three lobes
+        for (let i = 0; i < 3; i++) {
+          const a = (i / 3) * Math.PI * 2 - Math.PI / 2;
+          ctx.beginPath();
+          ctx.arc(Math.cos(a) * s * 0.35, Math.sin(a) * s * 0.35, s * 0.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // Center cutout with glow
+        ctx.fillStyle = '#000';
+        ctx.shadowColor = color;
+        ctx.shadowBlur = s * 0.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, s * 0.18, 0, Math.PI * 2);
+        ctx.fill();
+        // Gaps between lobes
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#000';
+        ctx.globalAlpha = 0.6;
+        for (let i = 0; i < 3; i++) {
+          const a = (i / 3) * Math.PI * 2 - Math.PI / 2 + Math.PI / 3;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.arc(0, 0, s * 0.75, a - 0.25, a + 0.25);
+          ctx.closePath();
+          ctx.fill();
+        }
+        break;
+      }
+    }
+
+    ctx.restore();
   }
 
   drawStar(ctx, x, y, outerR, innerR, points, color) {

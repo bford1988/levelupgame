@@ -171,6 +171,40 @@ class ParticleSystem {
     });
   }
 
+  emitWarp(x, y, radius) {
+    // Swirling implosion/explosion effect for warp holes
+    const colors = ['#00e5ff', '#44ffff', '#00aaff', '#88ffff', '#ffffff'];
+
+    // Spiral inward particles
+    for (let i = 0; i < 30; i++) {
+      const angle = (i / 30) * Math.PI * 2;
+      const speed = 4 + Math.random() * 5;
+      this.particles.push({
+        x: x + Math.cos(angle) * radius,
+        y: y + Math.sin(angle) * radius,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        vx: -Math.cos(angle) * speed * 0.5,
+        vy: -Math.sin(angle) * speed * 0.5,
+        radius: 3 + Math.random() * 5,
+        life: 0.8 + Math.random() * 0.4,
+        maxLife: 1.2,
+      });
+    }
+
+    // Central flash
+    this.particles.push({
+      x,
+      y,
+      color: '#00e5ff',
+      vx: 0,
+      vy: 0,
+      radius: radius * 0.8,
+      life: 0.5,
+      maxLife: 0.5,
+      isRing: true,
+    });
+  }
+
   update(dt) {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];

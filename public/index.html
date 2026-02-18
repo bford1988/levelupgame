@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Barrage</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
@@ -23,9 +24,30 @@
       <input type="text" id="name-input" maxlength="16" placeholder="Enter your name" autocomplete="off">
       <label for="catchphrase-input">Killshot Catchphrase</label>
       <input type="text" id="catchphrase-input" maxlength="40" placeholder="e.g. Get rekt!" autocomplete="off">
-      <label>Tank Color</label>
-      <div class="color-swatches" id="color-swatches"></div>
-      <input type="hidden" id="color-input" value="#00e5ff">
+
+      <canvas id="tank-preview" width="280" height="160"></canvas>
+
+      <button id="randomize-btn">RANDOMIZE</button>
+
+      <div id="customize-toggle">&#9656; Customize</div>
+      <div id="customize-section" class="collapsed">
+        <label>Body Color</label>
+        <div class="color-swatches" id="color-swatches"></div>
+        <input type="hidden" id="color-input" value="#00e5ff">
+
+        <label>Accent Color</label>
+        <div class="color-swatches" id="accent-swatches"></div>
+        <input type="hidden" id="accent-input" value="#ff00ff">
+
+        <label>Decal</label>
+        <div class="decal-options" id="decal-options"></div>
+        <input type="hidden" id="decal-input" value="0">
+
+        <label>Bullet Shape</label>
+        <div class="bullet-options" id="bullet-options"></div>
+        <input type="hidden" id="bullet-input" value="0">
+      </div>
+
       <button id="play-btn">PLAY</button>
     </div>
   </div>
@@ -39,36 +61,6 @@
     <button id="respawn-btn">RESPAWN</button>
   </div>
 
-  <script>
-    (function() {
-      const NEON_COLORS = [
-        '#00e5ff', '#00ff88', '#ff00ff', '#ff3366',
-        '#ffff00', '#ff6600', '#00ff00', '#ff0066',
-        '#00ffff', '#ff4444', '#66ff00', '#ff00aa',
-        '#44ffcc', '#ff8800', '#aa00ff', '#00ffaa',
-      ];
-      const swatches = document.getElementById('color-swatches');
-      const colorInput = document.getElementById('color-input');
-      const startIdx = Math.floor(Math.random() * NEON_COLORS.length);
-
-      NEON_COLORS.forEach((color, i) => {
-        const swatch = document.createElement('div');
-        swatch.className = 'color-swatch';
-        swatch.style.backgroundColor = color;
-        swatch.dataset.color = color;
-        if (i === startIdx) {
-          swatch.classList.add('selected');
-          colorInput.value = color;
-        }
-        swatch.addEventListener('click', () => {
-          document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
-          swatch.classList.add('selected');
-          colorInput.value = color;
-        });
-        swatches.appendChild(swatch);
-      });
-    })();
-  </script>
   <script src="/shared/constants.js"></script>
   <script src="/js/Camera.js"></script>
   <script src="/js/Input.js"></script>
@@ -78,6 +70,356 @@
   <script src="/js/Renderer.js"></script>
   <script src="/js/Network.js"></script>
   <script src="/js/Interpolation.js"></script>
+
+  <script>
+    (function() {
+      const NEON_COLORS = [
+        '#00e5ff', '#00ff88', '#ff00ff', '#ff3366',
+        '#ffff00', '#ff6600', '#00ff00', '#ff0066',
+        '#00ffff', '#ff4444', '#66ff00', '#ff00aa',
+        '#44ffcc', '#ff8800', '#aa00ff', '#00ffaa',
+      ];
+
+      const DECALS = [
+        { id: 0, label: 'None' },
+        { id: 1, label: 'Skull' },
+        { id: 2, label: 'Lightning' },
+        { id: 3, label: 'Star' },
+        { id: 4, label: 'Crosshair' },
+        { id: 5, label: 'Flame' },
+        { id: 6, label: 'Shield' },
+        { id: 7, label: 'Diamond' },
+        { id: 8, label: 'Heart' },
+        { id: 9, label: 'Biohazard' },
+      ];
+
+      const BULLET_SHAPES = [
+        { id: 0, label: 'Circle' },
+        { id: 1, label: 'Square' },
+        { id: 2, label: 'Triangle' },
+        { id: 3, label: 'Star' },
+        { id: 4, label: 'Diamond' },
+      ];
+
+      const colorInput = document.getElementById('color-input');
+      const accentInput = document.getElementById('accent-input');
+      const decalInput = document.getElementById('decal-input');
+      const bulletInput = document.getElementById('bullet-input');
+
+      // ---- Color Swatches ----
+      function buildSwatches(containerId, hiddenId) {
+        const container = document.getElementById(containerId);
+        const hidden = document.getElementById(hiddenId);
+        const startIdx = Math.floor(Math.random() * NEON_COLORS.length);
+
+        NEON_COLORS.forEach((color, i) => {
+          const swatch = document.createElement('div');
+          swatch.className = 'color-swatch';
+          swatch.style.backgroundColor = color;
+          swatch.dataset.color = color;
+          if (i === startIdx) {
+            swatch.classList.add('selected');
+            hidden.value = color;
+          }
+          swatch.addEventListener('click', () => {
+            container.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+            swatch.classList.add('selected');
+            hidden.value = color;
+          });
+          container.appendChild(swatch);
+        });
+      }
+
+      buildSwatches('color-swatches', 'color-input');
+      buildSwatches('accent-swatches', 'accent-input');
+
+      // ---- Decal Picker (canvas-based) ----
+      const decalContainer = document.getElementById('decal-options');
+      const previewTR = new TankRenderer();
+
+      DECALS.forEach((dec, i) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'decal-option' + (i === 0 ? ' selected' : '');
+        wrapper.title = dec.label;
+        wrapper.dataset.id = dec.id;
+
+        const cvs = document.createElement('canvas');
+        cvs.width = 36;
+        cvs.height = 36;
+        const c = cvs.getContext('2d');
+
+        if (dec.id === 0) {
+          c.fillStyle = '#555';
+          c.font = 'bold 14px sans-serif';
+          c.textAlign = 'center';
+          c.textBaseline = 'middle';
+          c.fillText('---', 18, 18);
+        } else {
+          previewTR.drawDecal(c, 18, 18, 28, dec.id, '#00e5ff');
+        }
+
+        wrapper.appendChild(cvs);
+        wrapper.addEventListener('click', () => {
+          decalContainer.querySelectorAll('.decal-option').forEach(b => b.classList.remove('selected'));
+          wrapper.classList.add('selected');
+          decalInput.value = dec.id;
+        });
+        decalContainer.appendChild(wrapper);
+      });
+
+      // ---- Bullet Shape Picker ----
+      const bulletContainer = document.getElementById('bullet-options');
+
+      function drawBulletShape(c, x, y, r, shapeId) {
+        c.beginPath();
+        switch (shapeId) {
+          case 0:
+            c.arc(x, y, r, 0, Math.PI * 2);
+            break;
+          case 1:
+            c.rect(x - r, y - r, r * 2, r * 2);
+            break;
+          case 2:
+            c.moveTo(x, y - r);
+            c.lineTo(x + r * 0.866, y + r * 0.5);
+            c.lineTo(x - r * 0.866, y + r * 0.5);
+            c.closePath();
+            break;
+          case 3:
+            for (let j = 0; j < 10; j++) {
+              const angle = (j / 10) * Math.PI * 2 - Math.PI / 2;
+              const rad = j % 2 === 0 ? r : r * 0.45;
+              const px = x + Math.cos(angle) * rad;
+              const py = y + Math.sin(angle) * rad;
+              if (j === 0) c.moveTo(px, py);
+              else c.lineTo(px, py);
+            }
+            c.closePath();
+            break;
+          case 4:
+            c.moveTo(x, y - r);
+            c.lineTo(x + r * 0.7, y);
+            c.lineTo(x, y + r);
+            c.lineTo(x - r * 0.7, y);
+            c.closePath();
+            break;
+        }
+        c.fill();
+        c.stroke();
+      }
+
+      BULLET_SHAPES.forEach((shape, i) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'bullet-option' + (i === 0 ? ' selected' : '');
+        wrapper.dataset.id = shape.id;
+        wrapper.title = shape.label;
+
+        const cvs = document.createElement('canvas');
+        cvs.width = 32;
+        cvs.height = 32;
+        const c = cvs.getContext('2d');
+        c.fillStyle = '#00e5ff';
+        c.strokeStyle = '#000';
+        c.lineWidth = 1.5;
+        drawBulletShape(c, 16, 16, 10, shape.id);
+        wrapper.appendChild(cvs);
+
+        wrapper.addEventListener('click', () => {
+          bulletContainer.querySelectorAll('.bullet-option').forEach(b => b.classList.remove('selected'));
+          wrapper.classList.add('selected');
+          bulletInput.value = shape.id;
+        });
+        bulletContainer.appendChild(wrapper);
+      });
+
+      // ---- Collapsible Customize Section ----
+      const customizeToggle = document.getElementById('customize-toggle');
+      const customizeSection = document.getElementById('customize-section');
+
+      customizeToggle.addEventListener('click', () => {
+        const isCollapsed = customizeSection.classList.toggle('collapsed');
+        customizeToggle.innerHTML = isCollapsed ? '&#9656; Customize' : '&#9662; Customize';
+      });
+
+      // ---- Randomize ----
+      function randomize() {
+        const pi = Math.floor(Math.random() * NEON_COLORS.length);
+        colorInput.value = NEON_COLORS[pi];
+        document.querySelectorAll('#color-swatches .color-swatch').forEach((s, i) => {
+          s.classList.toggle('selected', i === pi);
+        });
+
+        const ai = Math.floor(Math.random() * NEON_COLORS.length);
+        accentInput.value = NEON_COLORS[ai];
+        document.querySelectorAll('#accent-swatches .color-swatch').forEach((s, i) => {
+          s.classList.toggle('selected', i === ai);
+        });
+
+        const di = Math.floor(Math.random() * DECALS.length);
+        decalInput.value = DECALS[di].id;
+        document.querySelectorAll('#decal-options .decal-option').forEach((b, i) => {
+          b.classList.toggle('selected', i === di);
+        });
+
+        const bi = Math.floor(Math.random() * BULLET_SHAPES.length);
+        bulletInput.value = BULLET_SHAPES[bi].id;
+        document.querySelectorAll('#bullet-options .bullet-option').forEach((b, i) => {
+          b.classList.toggle('selected', i === bi);
+        });
+      }
+
+      document.getElementById('randomize-btn').addEventListener('click', randomize);
+
+      // Auto-randomize on load for a nice first impression
+      randomize();
+
+      // ---- Tank Preview ----
+      const previewCanvas = document.getElementById('tank-preview');
+      const previewCtx = previewCanvas.getContext('2d');
+      const tankRenderer = new TankRenderer();
+      const bullets = [];
+      let bulletTimer = 0;
+
+      const mockCamera = {
+        canvas: previewCanvas,
+        zoom: 2.0,
+        x: 0,
+        y: 0,
+        shakeOffsetX: 0,
+        shakeOffsetY: 0,
+        worldToScreen(wx, wy) {
+          return {
+            x: (wx - this.x) * this.zoom + this.canvas.width * 0.35,
+            y: (wy - this.y) * this.zoom + this.canvas.height / 2,
+          };
+        },
+        getViewport() {
+          return { left: -500, right: 500, top: -500, bottom: 500 };
+        }
+      };
+
+      function getPreviewPlayer() {
+        return {
+          x: 0, y: 0,
+          r: 20,
+          c: colorInput.value,
+          ac: accentInput.value,
+          d: parseInt(decalInput.value) || 0,
+          bs: parseInt(bulletInput.value) || 0,
+          a: 0,
+          n: '',
+          h: 100, mh: 100,
+          ti: 8,
+          al: 1, inv: 0,
+          boosting: 0,
+          gpu: null, gpt: 0, gptm: 0,
+          spt: 0, sptm: 0,
+        };
+      }
+
+      function spawnBullet() {
+        const player = getPreviewPlayer();
+        const spawnX = player.r * 1.3;
+        bullets.push({
+          x: spawnX,
+          y: 0,
+          vx: 3,
+          shape: parseInt(bulletInput.value) || 0,
+          color: colorInput.value,
+          alpha: 1,
+        });
+      }
+
+      function previewLoop() {
+        const dt = 1 / 60;
+        tankRenderer.update(dt);
+        bulletTimer++;
+
+        if (bulletTimer >= 25) {
+          spawnBullet();
+          bulletTimer = 0;
+        }
+
+        // Update bullets
+        for (let i = bullets.length - 1; i >= 0; i--) {
+          const b = bullets[i];
+          b.x += b.vx;
+          // Fade as they approach right edge
+          const screenX = b.x * mockCamera.zoom + previewCanvas.width * 0.35;
+          if (screenX > previewCanvas.width - 30) {
+            b.alpha -= 0.08;
+          }
+          if (b.alpha <= 0 || screenX > previewCanvas.width + 10) {
+            bullets.splice(i, 1);
+          }
+        }
+
+        // Clear
+        previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+        previewCtx.fillStyle = '#0a0a18';
+        previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+
+        // Draw bullets behind tank
+        for (const b of bullets) {
+          const sx = b.x * mockCamera.zoom + previewCanvas.width * 0.35;
+          const sy = b.y * mockCamera.zoom + previewCanvas.height / 2;
+          const r = 4 * mockCamera.zoom;
+
+          previewCtx.globalAlpha = b.alpha;
+          previewCtx.fillStyle = b.color;
+          previewCtx.beginPath();
+
+          switch (b.shape) {
+            case 1:
+              previewCtx.rect(sx - r, sy - r, r * 2, r * 2);
+              break;
+            case 2:
+              previewCtx.moveTo(sx + r, sy);
+              previewCtx.lineTo(sx - r * 0.5, sy - r * 0.866);
+              previewCtx.lineTo(sx - r * 0.5, sy + r * 0.866);
+              previewCtx.closePath();
+              break;
+            case 3:
+              for (let j = 0; j < 10; j++) {
+                const angle = (j / 10) * Math.PI * 2 - Math.PI / 2;
+                const rad = j % 2 === 0 ? r : r * 0.45;
+                const px = sx + Math.cos(angle) * rad;
+                const py = sy + Math.sin(angle) * rad;
+                if (j === 0) previewCtx.moveTo(px, py);
+                else previewCtx.lineTo(px, py);
+              }
+              previewCtx.closePath();
+              break;
+            case 4:
+              previewCtx.moveTo(sx + r, sy);
+              previewCtx.lineTo(sx, sy - r * 0.7);
+              previewCtx.lineTo(sx - r, sy);
+              previewCtx.lineTo(sx, sy + r * 0.7);
+              previewCtx.closePath();
+              break;
+            default:
+              previewCtx.arc(sx, sy, r, 0, Math.PI * 2);
+              break;
+          }
+          previewCtx.fill();
+          previewCtx.lineWidth = 1;
+          previewCtx.strokeStyle = 'rgba(0,0,0,0.3)';
+          previewCtx.stroke();
+          previewCtx.globalAlpha = 1;
+        }
+
+        // Draw tank
+        const player = getPreviewPlayer();
+        tankRenderer.drawTank(previewCtx, mockCamera, player, true);
+
+        requestAnimationFrame(previewLoop);
+      }
+
+      // Start preview
+      requestAnimationFrame(previewLoop);
+    })();
+  </script>
+
   <script src="/js/main.js"></script>
 </body>
 </html>

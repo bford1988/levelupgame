@@ -26,7 +26,7 @@ const config = {
   BOOST_MULTIPLIER: 3.0,
   BOOST_FUEL_MAX: 180,      // ticks of full boost (~6 seconds)
   BOOST_FUEL_DRAIN: 1,      // fuel consumed per tick while boosting
-  BOOST_FUEL_REGEN: 0.5,    // fuel recovered per tick while not boosting
+  // Regen is now dynamic via boostRegenFromRadius() - fast for small, slow for big
 
   // Projectile base stats
   BASE_BULLET_RADIUS: 4,
@@ -53,9 +53,38 @@ const config = {
 
   // Mines
   MINE_COUNT: 25,
-  MINE_RADIUS: 14,
+  MINE_RADIUS: 20,
   MINE_DAMAGE_PERCENT: 0.5,      // 50% of max health
   HEALTH_REGEN: 0.5,
+
+  // Warp Holes (escape portals for small players)
+  WARP_HOLES: [
+    // 5K max - corners (early-game escape routes)
+    { x: 1300, y: 1300, maxScore: 5000 },
+    { x: 8700, y: 8700, maxScore: 5000 },
+    // 10K max - mid edges
+    { x: 2500, y: 5000, maxScore: 10000 },
+    { x: 7500, y: 5000, maxScore: 10000 },
+    // 25K max - inner areas
+    { x: 3500, y: 6500, maxScore: 25000 },
+    { x: 6500, y: 3500, maxScore: 25000 },
+  ],
+  WARP_HOLE_RADIUS: 70,
+  WARP_HOLE_COOLDOWN: 300,  // 10 seconds at 30Hz
+
+  // Power-ups
+  POWERUP_TYPES: [
+    { type: 'laser',     duration: 240, maxCount: 2, color: '#ff4444', radius: 12 },
+    { type: 'rapidfire', duration: 240, maxCount: 4, color: '#ffcc00', radius: 12 },
+    { type: 'speed',     duration: 120, maxCount: 6, color: '#00ff66', radius: 12 },
+  ],
+  LASER_RANGE: 800,
+  LASER_DAMAGE_MULT: 3,
+  LASER_FIRE_RATE: 15,       // ticks between laser shots
+  RAPID_FIRE_MULT: 3,        // fire rate multiplier
+  RAPID_FIRE_SPEED_MULT: 1.5,  // bullet speed multiplier
+  RAPID_FIRE_RANGE_MULT: 1.4,  // bullet lifetime multiplier (extends range)
+  SPEED_POWERUP_MULT: 2.5,   // speed multiplier
 
   // Kill reward
   KILL_SCORE_PERCENT: 0.5,
@@ -175,8 +204,10 @@ const config = {
     const raw = 20 + Math.pow(score, 0.38) * 2.5;
     return Math.min(raw, config.MAP_WIDTH * 0.05);
   },
-  speedFromRadius(radius) {
-    return 5.5 * Math.pow(20 / radius, 0.12);
+  speedFromScore(score) {
+    // Smooth continuous curve directly from score (+15% across the board)
+    // 0: 6.3, 2K: 5.7, 3K: 5.5, 20K: 4.7, 100K: 4.0, 500K: 3.5 (floor 3.5)
+    return Math.max(3.5, 6.3 * Math.pow(1 + score / 1000, -0.1));
   },
   healthFromRadius(radius) {
     return 150 * (radius / 20);
@@ -197,8 +228,26 @@ const config = {
     }
     return 1;
   },
+  boostRegenFromRadius(radius) {
+    // Super fast for small players (~2.4s full recharge), slow for big (~30s+)
+    return 2.5 * Math.pow(config.BASE_RADIUS / radius, 0.8);
+  },
   ramDamage(attackerRadius, defenderRadius) {
-    return (attackerRadius / defenderRadius) * config.RAM_DAMAGE_FACTOR;
+    // Diminishing returns when attacker is much bigger (prevents insta-kills)
+    const ratio = attackerRadius / defenderRadius;
+    const effectiveRatio = 1 + Math.log(Math.max(1, ratio));
+    return effectiveRatio * config.RAM_DAMAGE_FACTOR;
+  },
+  deathFoodCount(score) {
+    // More food from bigger kills: sqrt scaling with a floor and cap
+    const base = 3 + Math.floor(Math.sqrt(score / 200));
+    return Math.min(30, Math.max(3, base));
+  },
+  deathFoodValue(score) {
+    // Higher-value food from bigger kills
+    if (score >= 50000) return { radius: 18, value: 100, color: '#F44336' };
+    if (score >= 10000) return { radius: 10, value: 25, color: '#FF9800' };
+    return { radius: 5, value: 5, color: '#FFEB3B' };
   },
   // Barrel configs are now generated procedurally in TankRenderer
   getBarrelsForTier(tier) {

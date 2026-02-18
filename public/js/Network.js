@@ -5,22 +5,24 @@ class Network {
     this.mapWidth = 4000;
     this.mapHeight = 4000;
     this.obstacles = [];
+    this.warpHoles = [];
     this.onState = null;
     this.onWelcome = null;
     this.onDeath = null;
     this.onKillFeed = null;
+    this.onWarpDenied = null;
     this.instanceId = null;
     this.connected = false;
     this.lastInputSend = 0;
   }
 
-  connect(name, color, catchphrase) {
+  connect(name, color, catchphrase, accentColor, decal, bulletShape) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     this.ws = new WebSocket(`${protocol}//${window.location.host}`);
 
     this.ws.onopen = () => {
       this.connected = true;
-      const data = { name, color };
+      const data = { name, color, accentColor, decal, bulletShape };
       if (catchphrase) data.catchphrase = catchphrase;
       this.send(MSG.JOIN, data);
     };
@@ -39,6 +41,7 @@ class Network {
           this.mapWidth = msg.mw;
           this.mapHeight = msg.mh;
           this.obstacles = msg.obs;
+          this.warpHoles = msg.wh || [];
           this.instanceId = msg.inst || null;
           if (this.onWelcome) this.onWelcome(msg);
           break;
@@ -50,6 +53,9 @@ class Network {
           break;
         case MSG.KILL_FEED:
           if (this.onKillFeed) this.onKillFeed(msg);
+          break;
+        case MSG.WARP_DENIED:
+          if (this.onWarpDenied) this.onWarpDenied(msg);
           break;
       }
     };

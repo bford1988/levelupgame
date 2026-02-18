@@ -52,4 +52,8 @@ class Input {
   isBoostHeld() {
     return this.leftDown;
   }
+
+  resetBoost() {
+    this.leftDown = false;
+  }
 }

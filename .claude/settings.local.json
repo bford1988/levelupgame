@@ -20,7 +20,8 @@
       "Bash(node -c:*)",
       "Bash(node:*)",
       "Bash(npx @digitalocean/mcp:*)",
-      "WebFetch(domain:www.digitalocean.com)"
+      "WebFetch(domain:www.digitalocean.com)",
+      "Bash(curl:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

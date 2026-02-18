@@ -182,7 +182,11 @@ wss.on('connection', (ws, req) => {
         const catchphrase = filterText(
           typeof msg.catchphrase === 'string' ? msg.catchphrase.slice(0, 40) : ''
         );
-        player = manager.addPlayer(ws, name, msg.color || '#00e5ff', catchphrase);
+        const color = msg.color || '#00e5ff';
+        const accentColor = msg.accentColor || color;
+        const decal = (typeof msg.decal === 'number' && msg.decal >= 0 && msg.decal <= 9) ? msg.decal : 0;
+        const bulletShape = (typeof msg.bulletShape === 'number' && msg.bulletShape >= 0 && msg.bulletShape <= 4) ? msg.bulletShape : 0;
+        player = manager.addPlayer(ws, name, color, catchphrase, accentColor, decal, bulletShape);
         if (player) {
           console.log(`${player.name} joined instance ${player._instance.instanceId} (${player.id})`);
         }

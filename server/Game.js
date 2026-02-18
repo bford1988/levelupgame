@@ -18,8 +18,12 @@ class Game {
     this.turrets = [];
     this.mines = [];
     this.explosions = []; // temporary, cleared after broadcast
+    this.warpEffects = []; // temporary, cleared after broadcast
+    this.beams = [];      // temporary laser beams, cleared after broadcast
     this.bots = [];
+    this.powerUps = [];
     this.spectators = []; // admin spectator websockets
+    this.warpHoles = []; // warp hole portals
     this.spectatorTickCounter = 0;
     this.spatialHash = new SpatialHash(200);
     this.tick = 0;
@@ -50,6 +54,16 @@ class Game {
           fireCooldown: Math.floor(Math.random() * config.TURRET_FIRE_RATE),
         });
       }
+    }
+
+    // Create warp holes
+    for (const wh of config.WARP_HOLES) {
+      this.warpHoles.push({
+        x: wh.x,
+        y: wh.y,
+        radius: config.WARP_HOLE_RADIUS,
+        maxScore: wh.maxScore,
+      });
     }
 
     // Spawn initial food
@@ -91,6 +105,7 @@ class Game {
       mw: this.mapWidth,
       mh: this.mapHeight,
       obs: this.obstacles.map(o => o.serialize()),
+      wh: this.warpHoles.map(wh => ({ x: wh.x, y: wh.y, r: wh.radius, ms: wh.maxScore })),
       inst: this.instanceId,
     });
   }
@@ -99,12 +114,12 @@ class Game {
     this.spectators = this.spectators.filter(s => s !== ws);
   }
 
-  addPlayer(ws, name, color, catchphrase) {
+  addPlayer(ws, name, color, catchphrase, accentColor, decal, bulletShape) {
     if (this.getRealPlayerCount() >= config.MAX_PLAYERS) {
       return null;
     }
 
-    const player = new Player(name, color, ws, catchphrase);
+    const player = new Player(name, color, ws, catchphrase, accentColor, decal, bulletShape);
     this.spawnAtRandom(player);
     this.players.set(player.id, player);
 
@@ -120,6 +135,7 @@ class Game {
       mw: this.mapWidth,
       mh: this.mapHeight,
       obs: this.obstacles.map(o => o.serialize()),
+      wh: this.warpHoles.map(wh => ({ x: wh.x, y: wh.y, r: wh.radius, ms: wh.maxScore })),
       inst: this.instanceId,
     });
 
@@ -201,6 +217,7 @@ class Game {
   update() {
     this.tick++;
     this.updatePositions();
+    this.updateMines();
     this.attractFood();
     this.autoFire();
     this.updateTurrets();
@@ -209,6 +226,7 @@ class Game {
     this.updateTimers();
     this.spawnFood();
     this.spawnMines();
+    this.spawnPowerUps();
     this.updateBots();
     this.broadcastState();
   }
@@ -217,20 +235,25 @@ class Game {
     for (const [, player] of this.players) {
       if (!player.alive) continue;
 
-      // Calculate max speed (with spawn speed boost)
+      // Calculate max speed (with spawn speed boost and power-ups)
       let maxSpeed = player.speed;
+      if (player.speedPowerUpTicks > 0) maxSpeed *= config.SPEED_POWERUP_MULT;
       if (player.invulnTicks > 0) {
         const boostFade = player.invulnTicks / config.INVULNERABILITY_TICKS;
         maxSpeed *= 1 + (config.SPAWN_SPEED_BOOST - 1) * boostFade;
       }
+
+      // Boost lockout countdown (prevents auto-boost after respawn)
+      if (player.boostLockoutTicks > 0) player.boostLockoutTicks--;
 
       // Boost: hold-to-use fuel system
       if (player.boostActive && player.boostFuel > 0) {
         maxSpeed *= config.BOOST_MULTIPLIER;
         player.boostFuel = Math.max(0, player.boostFuel - config.BOOST_FUEL_DRAIN);
       } else if (!player.boostActive) {
-        // Only regen fuel when button is released
-        player.boostFuel = Math.min(config.BOOST_FUEL_MAX, player.boostFuel + config.BOOST_FUEL_REGEN);
+        // Regen scales with size: fast for small, slow for big
+        const regenRate = config.boostRegenFromRadius(player.radius);
+        player.boostFuel = Math.min(config.BOOST_FUEL_MAX, player.boostFuel + regenRate);
       }
 
       // Physics: accelerate toward desired velocity
@@ -332,6 +355,21 @@ class Game {
           f.y += (dy / dist) * pull;
         }
       }
+
+      // Also attract power-ups
+      for (const pu of this.powerUps) {
+        const dx = player.x - pu.x;
+        const dy = player.y - pu.y;
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq < attractRangeSq && distSq > 1) {
+          const dist = Math.sqrt(distSq);
+          const strength = 1 - dist / attractRange;
+          const pull = 2 + strength * 6;
+          pu.x += (dx / dist) * pull;
+          pu.y += (dy / dist) * pull;
+        }
+      }
     }
   }
 
@@ -342,23 +380,126 @@ class Game {
       player.fireCooldown--;
       if (player.fireCooldown > 0) continue;
 
-      const barrels = config.getBarrelsForTier(player.tier);
-      const bulletRadius = config.bulletRadiusFromPlayerRadius(player.radius);
-      const bulletDamage = config.bulletDamageFromPlayerRadius(player.radius);
+      if (player.gunPowerUp === 'laser') {
+        // Laser: hitscan beam
+        this.fireLaser(player);
+        player.fireCooldown = config.LASER_FIRE_RATE;
+      } else {
+        // Normal bullets (with rapid fire modifier)
+        const barrels = config.getBarrelsForTier(player.tier);
+        const bulletRadius = config.bulletRadiusFromPlayerRadius(player.radius);
+        const bulletDamage = config.bulletDamageFromPlayerRadius(player.radius);
 
-      for (const barrel of barrels) {
-        const angle = player.aimAngle + barrel.angle;
-        const spawnDist = player.radius * barrel.length;
-        const bx = player.x + Math.cos(angle) * spawnDist;
-        const by = player.y + Math.sin(angle) * spawnDist;
+        const isRapid = player.gunPowerUp === 'rapidfire';
+        const bulletSpeed = isRapid ? config.BULLET_SPEED * config.RAPID_FIRE_SPEED_MULT : undefined;
+        const bulletLifetime = isRapid ? Math.round(config.BULLET_LIFETIME * config.RAPID_FIRE_RANGE_MULT) : undefined;
 
-        this.projectiles.push(new Projectile(
-          bx, by, angle, bulletRadius, bulletDamage, player.id, player.color
-        ));
+        for (const barrel of barrels) {
+          const angle = player.aimAngle + barrel.angle;
+          const spawnDist = player.radius * barrel.length;
+          const bx = player.x + Math.cos(angle) * spawnDist;
+          const by = player.y + Math.sin(angle) * spawnDist;
+
+          this.projectiles.push(new Projectile(
+            bx, by, angle, bulletRadius, bulletDamage, player.id, player.color, bulletSpeed, bulletLifetime, player.bulletShape
+          ));
+        }
+
+        let cooldown = config.fireRateFromRadius(player.radius);
+        if (isRapid) {
+          cooldown = Math.max(2, Math.floor(cooldown / config.RAPID_FIRE_MULT));
+        }
+        player.fireCooldown = cooldown;
       }
-
-      player.fireCooldown = config.fireRateFromRadius(player.radius);
     }
+  }
+
+  fireLaser(player) {
+    const angle = player.aimAngle;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const startX = player.x + cos * player.radius;
+    const startY = player.y + sin * player.radius;
+    const maxRange = config.LASER_RANGE;
+    const damage = config.bulletDamageFromPlayerRadius(player.radius) * config.LASER_DAMAGE_MULT;
+
+    // Find beam endpoint: check obstacles
+    let beamLen = maxRange;
+    for (const obs of this.obstacles) {
+      const hitDist = this.rayRectIntersect(startX, startY, cos, sin, obs);
+      if (hitDist !== null && hitDist < beamLen) {
+        beamLen = hitDist;
+      }
+    }
+
+    // Check players along beam - find closest hit
+    let closestHitDist = beamLen;
+    let hitPlayer = null;
+    for (const [, other] of this.players) {
+      if (other === player || !other.alive || other.invulnTicks > 0) continue;
+      const hitDist = this.rayCircleIntersect(startX, startY, cos, sin, other.x, other.y, other.radius);
+      if (hitDist !== null && hitDist < closestHitDist) {
+        closestHitDist = hitDist;
+        hitPlayer = other;
+      }
+    }
+
+    // Apply damage to hit player
+    if (hitPlayer) {
+      hitPlayer.health -= damage;
+      beamLen = closestHitDist;
+      if (hitPlayer.health <= 0 && hitPlayer.alive) {
+        this.killPlayer(hitPlayer, player);
+      }
+    }
+
+    // Store beam for broadcast
+    const endX = startX + cos * beamLen;
+    const endY = startY + sin * beamLen;
+    this.beams.push({
+      x1: Math.round(startX),
+      y1: Math.round(startY),
+      x2: Math.round(endX),
+      y2: Math.round(endY),
+      c: player.color,
+    });
+  }
+
+  rayRectIntersect(ox, oy, dx, dy, rect) {
+    // Returns distance to intersection or null
+    const tMinX = (rect.x - ox) / (dx || 1e-10);
+    const tMaxX = (rect.x + rect.width - ox) / (dx || 1e-10);
+    const tMinY = (rect.y - oy) / (dy || 1e-10);
+    const tMaxY = (rect.y + rect.height - oy) / (dy || 1e-10);
+
+    const tNearX = Math.min(tMinX, tMaxX);
+    const tFarX = Math.max(tMinX, tMaxX);
+    const tNearY = Math.min(tMinY, tMaxY);
+    const tFarY = Math.max(tMinY, tMaxY);
+
+    const tNear = Math.max(tNearX, tNearY);
+    const tFar = Math.min(tFarX, tFarY);
+
+    if (tNear > tFar || tFar < 0) return null;
+    const t = tNear > 0 ? tNear : tFar;
+    return t > 0 ? t : null;
+  }
+
+  rayCircleIntersect(ox, oy, dx, dy, cx, cy, cr) {
+    // Returns distance to intersection or null
+    const fx = ox - cx;
+    const fy = oy - cy;
+    const a = dx * dx + dy * dy;
+    const b = 2 * (fx * dx + fy * dy);
+    const c = fx * fx + fy * fy - cr * cr;
+    let disc = b * b - 4 * a * c;
+    if (disc < 0) return null;
+    disc = Math.sqrt(disc);
+    const t1 = (-b - disc) / (2 * a);
+    const t2 = (-b + disc) / (2 * a);
+    if (t1 >= 0) return t1;
+    if (t2 >= 0) return t2;
+    return null;
   }
 
   updateTurrets() {
@@ -444,6 +585,9 @@ class Game {
     for (const m of this.mines) {
       this.spatialHash.insert(m);
     }
+    for (const pu of this.powerUps) {
+      this.spatialHash.insert(pu);
+    }
 
     // Check player collisions
     const processed = new Set();
@@ -504,6 +648,55 @@ class Game {
           if (player.health <= 0 && player.alive) {
             this.killPlayer(player, null);
           }
+        } else if (other.type === 'powerup') {
+          // Pick up power-up (gun and speed are separate slots, stackable)
+          const puDef = config.POWERUP_TYPES.find(t => t.type === other.puType);
+          if (puDef) {
+            if (other.puType === 'speed') {
+              player.speedPowerUpTicks = puDef.duration;
+              player.speedPowerUpMaxTicks = puDef.duration;
+            } else {
+              // laser or rapidfire go in gun slot (replaces current gun power-up)
+              player.gunPowerUp = other.puType;
+              player.gunPowerUpTicks = puDef.duration;
+              player.gunPowerUpMaxTicks = puDef.duration;
+            }
+          }
+          this.removePowerUp(other);
+        }
+      }
+
+      // Warp hole collision (separate from spatial hash since they're few and static)
+      if (player.alive && player.warpCooldown <= 0) {
+        for (const wh of this.warpHoles) {
+          const dx = player.x - wh.x;
+          const dy = player.y - wh.y;
+          const distSq = dx * dx + dy * dy;
+          const touchDist = wh.radius + player.radius;
+
+          if (distSq < touchDist * touchDist) {
+            if (player.score > wh.maxScore) {
+              // Too big - notify player (once per cooldown)
+              if (player.ws && player.warpCooldown <= 0) {
+                this.sendTo(player.ws, {
+                  t: MSG.WARP_DENIED,
+                  ms: wh.maxScore,
+                });
+                player.warpCooldown = 60; // 2s cooldown before next denial message
+              }
+            } else {
+              // Eligible - warp to empty spot
+              const dest = this.findEmptySpot(player);
+              this.warpEffects.push({ x: player.x, y: player.y, r: wh.radius });
+              this.warpEffects.push({ x: dest.x, y: dest.y, r: 40 });
+              player.x = dest.x;
+              player.y = dest.y;
+              player.vx = 0;
+              player.vy = 0;
+              player.warpCooldown = config.WARP_HOLE_COOLDOWN;
+            }
+            break;
+          }
         }
       }
     }
@@ -542,15 +735,17 @@ class Game {
     if (killer && killer.catchphrase) killMsg.catchphrase = killer.catchphrase;
     this.broadcast(killMsg);
 
-    // Scatter some food at death location
-    const foodCount = Math.min(15, Math.floor(victim.score / 50) + 2);
+    // Scatter food at death location - scales with victim's score/tier
+    const foodCount = config.deathFoodCount(victim.score);
+    const foodType = config.deathFoodValue(victim.score);
+    const scatterRadius = 20 + Math.min(80, victim.radius * 0.5);
     for (let i = 0; i < foodCount; i++) {
       const angle = (i / foodCount) * Math.PI * 2;
-      const dist = 20 + Math.random() * 40;
+      const dist = scatterRadius * (0.4 + Math.random() * 0.6);
       const fx = victim.x + Math.cos(angle) * dist;
       const fy = victim.y + Math.sin(angle) * dist;
       if (fx > 0 && fx < this.mapWidth && fy > 0 && fy < this.mapHeight) {
-        this.food.push(new Food(fx, fy, config.FOOD_TYPES[0]));
+        this.food.push(new Food(fx, fy, foodType));
       }
     }
   }
@@ -568,6 +763,22 @@ class Game {
       if (player.invulnTicks > 0) {
         player.invulnTicks--;
       }
+      if (player.warpCooldown > 0) {
+        player.warpCooldown--;
+      }
+      if (player.gunPowerUpTicks > 0) {
+        player.gunPowerUpTicks--;
+        if (player.gunPowerUpTicks <= 0) {
+          player.gunPowerUp = null;
+          player.gunPowerUpMaxTicks = 0;
+        }
+      }
+      if (player.speedPowerUpTicks > 0) {
+        player.speedPowerUpTicks--;
+        if (player.speedPowerUpTicks <= 0) {
+          player.speedPowerUpMaxTicks = 0;
+        }
+      }
     }
   }
 
@@ -581,7 +792,8 @@ class Game {
       do {
         x = 50 + Math.random() * (this.mapWidth - 100);
         y = 50 + Math.random() * (this.mapHeight - 100);
-        valid = !this.obstacles.some(obs => circleRect({ x, y, radius: type.radius + 5 }, obs));
+        valid = !this.obstacles.some(obs => circleRect({ x, y, radius: type.radius + 5 }, obs))
+          && !this.isNearWarpHole(x, y, config.WARP_HOLE_RADIUS + 10);
         attempts++;
       } while (!valid && attempts < 10);
 
@@ -611,6 +823,12 @@ class Game {
 
   // --- Mines ---
 
+  updateMines() {
+    for (const m of this.mines) {
+      m.update(this.mapWidth, this.mapHeight);
+    }
+  }
+
   spawnMines() {
     while (this.mines.length < config.MINE_COUNT) {
       let x, y, valid;
@@ -618,7 +836,8 @@ class Game {
       do {
         x = 100 + Math.random() * (this.mapWidth - 200);
         y = 100 + Math.random() * (this.mapHeight - 200);
-        valid = !this.obstacles.some(obs => circleRect({ x, y, radius: config.MINE_RADIUS + 10 }, obs));
+        valid = !this.obstacles.some(obs => circleRect({ x, y, radius: config.MINE_RADIUS + 10 }, obs))
+          && !this.isNearWarpHole(x, y, config.WARP_HOLE_RADIUS + 30);
         attempts++;
       } while (!valid && attempts < 10);
       this.mines.push(new Mine(x, y));
@@ -628,6 +847,39 @@ class Game {
   removeMine(mine) {
     const idx = this.mines.indexOf(mine);
     if (idx !== -1) this.mines.splice(idx, 1);
+  }
+
+  // --- Power-ups ---
+
+  spawnPowerUps() {
+    for (const puDef of config.POWERUP_TYPES) {
+      let count = 0;
+      for (const p of this.powerUps) { if (p.puType === puDef.type) count++; }
+      while (count < puDef.maxCount) {
+        count++;
+        let x, y, valid;
+        let attempts = 0;
+        do {
+          x = 200 + Math.random() * (this.mapWidth - 400);
+          y = 200 + Math.random() * (this.mapHeight - 400);
+          valid = !this.isNearObstacle(x, y, 60) && !this.isNearWarpHole(x, y, 100);
+          attempts++;
+        } while (!valid && attempts < 10);
+        this.powerUps.push({
+          id: 'pu' + this.tick + '_' + Math.random().toString(36).slice(2, 6),
+          type: 'powerup',
+          puType: puDef.type,
+          x, y,
+          radius: puDef.radius,
+          color: puDef.color,
+        });
+      }
+    }
+  }
+
+  removePowerUp(pu) {
+    const idx = this.powerUps.indexOf(pu);
+    if (idx !== -1) this.powerUps.splice(idx, 1);
   }
 
   // --- Bots ---
@@ -647,20 +899,27 @@ class Game {
   // --- Spawning ---
 
   spawnAtRandom(player) {
+    const spot = this.findEmptySpot(player);
+    player.x = spot.x;
+    player.y = spot.y;
+  }
+
+  findEmptySpot(excludePlayer) {
     let bestX = this.mapWidth / 2;
     let bestY = this.mapHeight / 2;
     let bestMinDist = 0;
 
-    // Try multiple positions, pick the one farthest from any other player
-    for (let attempt = 0; attempt < 30; attempt++) {
-      const x = 150 + Math.random() * (this.mapWidth - 300);
-      const y = 150 + Math.random() * (this.mapHeight - 300);
+    // Try many positions, pick the one farthest from any alive player
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const x = 200 + Math.random() * (this.mapWidth - 400);
+      const y = 200 + Math.random() * (this.mapHeight - 400);
 
-      if (this.isNearObstacle(x, y, 80)) continue;
+      if (this.isNearObstacle(x, y, 100)) continue;
+      if (this.isNearWarpHole(x, y, 150)) continue;
 
       let minDist = Infinity;
       for (const [, other] of this.players) {
-        if (other === player || !other.alive) continue;
+        if (other === excludePlayer || !other.alive) continue;
         const dx = other.x - x;
         const dy = other.y - y;
         const dist = dx * dx + dy * dy;
@@ -674,8 +933,7 @@ class Game {
       }
     }
 
-    player.x = bestX;
-    player.y = bestY;
+    return { x: bestX, y: bestY };
   }
 
   isNearObstacle(x, y, margin) {
@@ -683,6 +941,14 @@ class Game {
       x > obs.x - margin && x < obs.x + obs.width + margin &&
       y > obs.y - margin && y < obs.y + obs.height + margin
     );
+  }
+
+  isNearWarpHole(x, y, margin) {
+    return this.warpHoles.some(wh => {
+      const dx = wh.x - x;
+      const dy = wh.y - y;
+      return dx * dx + dy * dy < margin * margin;
+    });
   }
 
   // --- Networking ---
@@ -748,6 +1014,29 @@ class Game {
         }
       }
 
+      const visibleWarps = [];
+      for (const w of this.warpEffects) {
+        if (Math.abs(w.x - player.x) < halfW && Math.abs(w.y - player.y) < halfH) {
+          visibleWarps.push(w);
+        }
+      }
+
+      const visiblePowerUps = [];
+      for (const pu of this.powerUps) {
+        if (Math.abs(pu.x - player.x) < halfW && Math.abs(pu.y - player.y) < halfH) {
+          visiblePowerUps.push({ x: Math.round(pu.x), y: Math.round(pu.y), r: pu.radius, c: pu.color, pt: pu.puType });
+        }
+      }
+
+      const visibleBeams = [];
+      for (const bm of this.beams) {
+        // Check if either endpoint is in viewport
+        if ((Math.abs(bm.x1 - player.x) < halfW && Math.abs(bm.y1 - player.y) < halfH) ||
+            (Math.abs(bm.x2 - player.x) < halfW && Math.abs(bm.y2 - player.y) < halfH)) {
+          visibleBeams.push(bm);
+        }
+      }
+
       const msg = {
         t: MSG.STATE,
         k: this.tick,
@@ -759,6 +1048,9 @@ class Game {
         lb: top10,
       };
       if (visibleExplosions.length > 0) msg.ex = visibleExplosions;
+      if (visibleWarps.length > 0) msg.wp = visibleWarps;
+      if (visiblePowerUps.length > 0) msg.pu = visiblePowerUps;
+      if (visibleBeams.length > 0) msg.bm = visibleBeams;
       this.sendTo(player.ws, msg);
     }
 
@@ -806,6 +1098,8 @@ class Game {
 
     // Clear one-time events after broadcast
     this.explosions = [];
+    this.warpEffects = [];
+    this.beams = [];
   }
 
   sendTo(ws, data) {

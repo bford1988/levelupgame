@@ -3,7 +3,7 @@ const config = require('./config');
 let nextBulletId = 1;
 
 class Projectile {
-  constructor(x, y, angle, radius, damage, ownerId, color, speed, lifetime) {
+  constructor(x, y, angle, radius, damage, ownerId, color, speed, lifetime, bulletShape) {
     this.id = 'b' + (nextBulletId++);
     this.type = 'projectile';
     this.x = x;
@@ -15,6 +15,7 @@ class Projectile {
     this.ownerId = ownerId;
     this.color = color;
     this.lifetime = lifetime || config.BULLET_LIFETIME;
+    this.bulletShape = bulletShape || 0;
   }
 
   update() {
@@ -32,12 +33,14 @@ class Projectile {
   }
 
   serialize() {
-    return {
+    const out = {
       x: Math.round(this.x),
       y: Math.round(this.y),
       r: Math.round(this.radius * 10) / 10,
       c: this.color,
     };
+    if (this.bulletShape) out.bs = this.bulletShape;
+    return out;
   }
 }
 

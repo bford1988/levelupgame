@@ -13,6 +13,7 @@ const MSG = {
   KILL_FEED: 13,
   PLAYER_JOIN: 14,
   PLAYER_LEAVE: 15,
+  WARP_DENIED: 16,
 };
 
 if (typeof module !== 'undefined') module.exports = { MSG };

@@ -44,9 +44,9 @@ class InstanceManager {
     return this.createInstance();
   }
 
-  addPlayer(ws, name, color, catchphrase) {
+  addPlayer(ws, name, color, catchphrase, accentColor, decal, bulletShape) {
     const instance = this.findAvailableInstance();
-    const player = instance.addPlayer(ws, name, color, catchphrase);
+    const player = instance.addPlayer(ws, name, color, catchphrase, accentColor, decal, bulletShape);
     if (player) {
       player._instance = instance;
       this.eventLog.log('player_join', `${name} joined instance ${instance.instanceId}`);
