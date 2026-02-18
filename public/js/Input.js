@@ -151,15 +151,14 @@ class Input {
 
   getMovement(camera, playerX, playerY) {
     if (this.isMobile) {
-      // No touch = no movement
-      if (this.moveTouch === null) return { dx: 0, dy: 0 };
-      // Thumb down but hasn't dragged past dead zone yet
-      if (Math.abs(this.moveDx) < 0.01 && Math.abs(this.moveDy) < 0.01) {
-        return { dx: 0, dy: 0 };
+      // If joystick is active and past dead zone, update last direction
+      if (this.moveTouch !== null && (Math.abs(this.moveDx) > 0.01 || Math.abs(this.moveDy) > 0.01)) {
+        const len = Math.sqrt(this.moveDx * this.moveDx + this.moveDy * this.moveDy);
+        this._lastMoveDx = this.moveDx / len;
+        this._lastMoveDy = this.moveDy / len;
       }
-      // Always full speed — joystick just controls direction
-      const len = Math.sqrt(this.moveDx * this.moveDx + this.moveDy * this.moveDy);
-      return { dx: this.moveDx / len, dy: this.moveDy / len };
+      // Always moving — return last known direction (defaults to right)
+      return { dx: this._lastMoveDx || 1, dy: this._lastMoveDy || 0 };
     }
 
     // Desktop: move toward mouse
