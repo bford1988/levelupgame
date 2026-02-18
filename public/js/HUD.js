@@ -399,7 +399,7 @@ class HUD {
       ctx.font = '11px "Segoe UI", Arial, sans-serif';
       ctx.textAlign = 'left';
       ctx.fillStyle = isBoosting ? '#00ffcc' : '#556';
-      ctx.fillText(isBoosting ? 'BOOSTING' : 'Double tap to boost', barX, barY - 3);
+      ctx.fillText(isBoosting ? 'BOOSTING' : 'BOOST', barX, barY - 3);
     } else {
       ctx.font = '14px "Segoe UI", Arial, sans-serif';
       ctx.textAlign = 'center';
@@ -561,6 +561,29 @@ class HUD {
       ctx.strokeStyle = 'rgba(255,255,255,0.5)';
       ctx.lineWidth = 2;
       ctx.stroke();
+
+      // Boost button on opposite side (only visible when joystick is active)
+      const bp = input.getBoostPos();
+      if (bp) {
+        const br = input.BOOST_RADIUS;
+
+        ctx.beginPath();
+        ctx.arc(bp.x, bp.y, br, 0, Math.PI * 2);
+        ctx.fillStyle = input.boostActive
+          ? 'rgba(0, 255, 204, 0.4)'
+          : 'rgba(255, 255, 255, 0.1)';
+        ctx.fill();
+        ctx.strokeStyle = input.boostActive
+          ? 'rgba(0, 255, 204, 0.8)'
+          : 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.font = 'bold 13px "Segoe UI", Arial, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = input.boostActive ? '#00ffcc' : 'rgba(255,255,255,0.5)';
+        ctx.fillText('BOOST', bp.x, bp.y + 5);
+      }
     }
   }
 }

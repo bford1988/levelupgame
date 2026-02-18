@@ -15,13 +15,14 @@ class Input {
     this.moveDx = 0;
     this.moveDy = 0;
     this.moveDistance = 0;
+    this.moveSide = null;       // 'left' or 'right' — which side joystick is on
 
     this.boostActive = false;
     this.boostTouch = null;
-    this.lastTouchEndTime = 0;
     this._lastAimAngle = 0;
 
     this.JOYSTICK_RADIUS = 60;
+    this.BOOST_RADIUS = 40;
 
     // Desktop: mouse events
     canvas.addEventListener('mousemove', (e) => {
@@ -55,18 +56,38 @@ class Input {
     }
   }
 
+  // Boost button position — opposite side of joystick, ~15% from edge, near bottom
+  getBoostPos() {
+    if (!this.moveSide) return null;
+    const margin = this.canvas.width * 0.15;
+    const x = this.moveSide === 'left'
+      ? (this.canvas.width - margin)
+      : margin;
+    const y = this.canvas.height - 60;
+    return { x, y };
+  }
+
+  _isInBoostZone(clientX, clientY) {
+    const bp = this.getBoostPos();
+    if (!bp) return false;
+    const dx = clientX - bp.x;
+    const dy = clientY - bp.y;
+    return (dx * dx + dy * dy) <= (this.BOOST_RADIUS + 12) * (this.BOOST_RADIUS + 12);
+  }
+
   _onTouchStart(e) {
     e.preventDefault();
-    const now = Date.now();
+    const halfW = this.canvas.width / 2;
     const touches = e.changedTouches;
 
     for (let i = 0; i < touches.length; i++) {
       const touch = touches[i];
 
-      // Double-tap detection → boost
-      if (now - this.lastTouchEndTime < 300 && this.boostTouch === null) {
-        this.boostActive = true;
+      // If joystick is active, check boost button first
+      if (this.moveTouch !== null && this.boostTouch === null && this._isInBoostZone(touch.clientX, touch.clientY)) {
         this.boostTouch = touch.identifier;
+        this.boostActive = true;
+        continue;
       }
 
       // First available touch becomes movement joystick
@@ -77,6 +98,7 @@ class Input {
         this.moveDx = 0;
         this.moveDy = 0;
         this.moveDistance = 0;
+        this.moveSide = touch.clientX < halfW ? 'left' : 'right';
       }
     }
   }
@@ -108,7 +130,6 @@ class Input {
 
   _onTouchEnd(e) {
     e.preventDefault();
-    this.lastTouchEndTime = Date.now();
     const touches = e.changedTouches;
 
     for (let i = 0; i < touches.length; i++) {
@@ -119,6 +140,7 @@ class Input {
         this.moveDx = 0;
         this.moveDy = 0;
         this.moveDistance = 0;
+        this.moveSide = null;
       }
       if (touch.identifier === this.boostTouch) {
         this.boostTouch = null;
@@ -150,7 +172,6 @@ class Input {
 
   getAimAngle(camera, playerX, playerY) {
     if (this.isMobile) {
-      // Aim follows joystick direction (same as mouse behavior)
       if (Math.abs(this.moveDx) > 0.01 || Math.abs(this.moveDy) > 0.01) {
         this._lastAimAngle = Math.atan2(this.moveDy, this.moveDx);
       }
