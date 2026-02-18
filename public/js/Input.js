@@ -158,7 +158,9 @@ class Input {
         this._lastMoveDy = this.moveDy / len;
       }
       // Always moving — return last known direction (defaults to right)
-      return { dx: this._lastMoveDx || 1, dy: this._lastMoveDy || 0 };
+      // Slightly faster on mobile to compensate for zoomed-out view
+      const boost = 1.25;
+      return { dx: (this._lastMoveDx || 1) * boost, dy: (this._lastMoveDy || 0) * boost };
     }
 
     // Desktop: move toward mouse
