@@ -70,8 +70,8 @@ class HUD {
     const isMob = input && input.isMobile;
 
     this.drawDamageVignette(ctx, canvas);
-    this.drawLeaderboard(ctx, state.lb || state.p, me, canvas, isMob);
-    this.drawMinimap(ctx, state, me, canvas, mapWidth, mapHeight, isMob);
+    const lbBottom = this.drawLeaderboard(ctx, state.lb || state.p, me, canvas, isMob);
+    this.drawMinimap(ctx, state, me, canvas, mapWidth, mapHeight, isMob, lbBottom);
     this.drawTierProgress(ctx, me, canvas, isMob);
     this.drawScore(ctx, me, canvas, isMob);
     if (!isMob) this.drawKillFeed(ctx, canvas);
@@ -82,7 +82,7 @@ class HUD {
   }
 
   drawLeaderboard(ctx, players, me, canvas, isMob) {
-    if (!players || players.length === 0) return;
+    if (!players || players.length === 0) return 0;
 
     const maxEntries = isMob ? 5 : 10;
     const sorted = [...players]
@@ -100,8 +100,11 @@ class HUD {
     const h = headerH + sorted.length * rowH;
 
     // Background
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillStyle = isMob ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.5)';
     ctx.fillRect(x, y, w, h);
+
+    const textAlpha = isMob ? 0.7 : 1;
+    ctx.globalAlpha = textAlpha;
 
     // Title
     ctx.font = `bold ${titleFontSize}px "Segoe UI", Arial, sans-serif`;
@@ -119,7 +122,7 @@ class HUD {
       const textY = ry + (isMob ? 16 : 20);
 
       if (isMe) {
-        ctx.fillStyle = 'rgba(0,229,255,0.15)';
+        ctx.fillStyle = isMob ? 'rgba(0,229,255,0.1)' : 'rgba(0,229,255,0.15)';
         ctx.fillRect(x, ry, w, rowH);
       }
 
@@ -148,13 +151,17 @@ class HUD {
       }
       ctx.textAlign = 'left';
     }
+
+    ctx.globalAlpha = 1;
+    return y + h;
   }
 
-  drawMinimap(ctx, state, me, canvas, mapWidth, mapHeight, isMob) {
+  drawMinimap(ctx, state, me, canvas, mapWidth, mapHeight, isMob, lbBottom) {
     const size = isMob ? 100 : 160;
     const padding = 10;
     const x = canvas.width - size - padding;
-    const y = canvas.height - size - padding;
+    // Mobile: right below leaderboard; Desktop: bottom-right
+    const y = isMob ? ((lbBottom || 0) + 6) : (canvas.height - size - padding);
     const scaleX = size / mapWidth;
     const scaleY = size / mapHeight;
 
@@ -258,9 +265,9 @@ class HUD {
     const barW = isMob ? 160 : 300;
     const barH = isMob ? 12 : 18;
 
-    // Mobile: lower-left corner; Desktop: bottom center
+    // Mobile: upper-left below score; Desktop: bottom center
     const barX = isMob ? 12 : (canvas.width / 2 - barW / 2);
-    const barY = isMob ? (canvas.height - 56) : (canvas.height - 110);
+    const barY = isMob ? 62 : (canvas.height - 110);
 
     // Background
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -316,9 +323,9 @@ class HUD {
     const tierFont = isMob ? 14 : 20;
 
     if (isMob) {
-      // Mobile: lower-left, above tier progress bar
+      // Mobile: upper-left (thumbs cover bottom)
       const baseX = 12;
-      const baseY = canvas.height - 72;
+      const baseY = 28;
 
       ctx.textAlign = 'left';
 
@@ -373,9 +380,9 @@ class HUD {
     const barW = isMob ? 100 : 160;
     const barH = isMob ? 8 : 10;
 
-    // Mobile: lower-left; Desktop: bottom center
+    // Mobile: upper-left below tier bar; Desktop: bottom center
     const barX = isMob ? 12 : (canvas.width / 2 - barW / 2);
-    const barY = isMob ? (canvas.height - 10) : (canvas.height - 20);
+    const barY = isMob ? 84 : (canvas.height - 20);
 
     ctx.fillStyle = 'rgba(0,0,0,0.4)';
     ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
@@ -387,8 +394,13 @@ class HUD {
     ctx.fillStyle = fuelColor;
     ctx.fillRect(barX, barY, barW * fuelRatio, barH);
 
-    // Boost label — only on desktop (mobile has the button)
-    if (!isMob) {
+    // Boost label
+    if (isMob) {
+      ctx.font = '11px "Segoe UI", Arial, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = isBoosting ? '#00ffcc' : '#556';
+      ctx.fillText(isBoosting ? 'BOOSTING' : 'Double tap to boost', barX, barY - 3);
+    } else {
       ctx.font = '14px "Segoe UI", Arial, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillStyle = isBoosting ? '#00ffcc' : (fuelRatio > 0.99 ? '#00e5ff' : '#667');
@@ -550,26 +562,5 @@ class HUD {
       ctx.lineWidth = 2;
       ctx.stroke();
     }
-
-    // Boost button (always visible on mobile)
-    const bp = input._getBoostPos();
-    const br = input.BOOST_RADIUS;
-
-    ctx.beginPath();
-    ctx.arc(bp.x, bp.y, br, 0, Math.PI * 2);
-    ctx.fillStyle = input.boostActive
-      ? 'rgba(0, 255, 204, 0.4)'
-      : 'rgba(255, 255, 255, 0.1)';
-    ctx.fill();
-    ctx.strokeStyle = input.boostActive
-      ? 'rgba(0, 255, 204, 0.8)'
-      : 'rgba(255, 255, 255, 0.3)';
-    ctx.lineWidth = 2;
-    ctx.stroke();
-
-    ctx.font = 'bold 12px "Segoe UI", Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = input.boostActive ? '#00ffcc' : 'rgba(255,255,255,0.5)';
-    ctx.fillText('BOOST', bp.x, bp.y + 4);
   }
 }
